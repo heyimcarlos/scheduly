@@ -1,0 +1,18 @@
+{
+  "mae_employees": 0.6614272152605866,
+  "mse_employees": 1.8505601221168961,
+  "rmse_employees": 1.3603529402757566,
+  "mape_pct": 40.755061059024726,
+  "n_val": 140,
+  "rounding": {
+    "n_val": 140,
+    "exact_match": 98,
+    "exact_match_pct": 70.0,
+    "off_by_1": 28,
+    "off_by_1_pct": 20.0,
+    "off_by_2": 10,
+    "off_by_2_pct": 7.14,
+    "off_by_3plus": 4,
+    "off_by_3plus_pct": 2.86
+  }
+}

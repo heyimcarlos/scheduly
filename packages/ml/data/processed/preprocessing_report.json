@@ -1,0 +1,52 @@
+{
+  "total_shifts": 2953,
+  "employees": 14,
+  "date_range": {
+    "start": "2025-01-01",
+    "end": "2026-01-01"
+  },
+  "match_quality": {
+    "exact": 2869,
+    "inferred": 84
+  },
+  "shift_type_distribution": {
+    "day": 2275,
+    "evening": 669,
+    "night": 9
+  },
+  "shift_type_by_location": {
+    "Serbia": {
+      "day": 845,
+      "evening": 64,
+      "night": 5
+    },
+    "Canada": {
+      "day": 1377,
+      "evening": 549,
+      "night": 4
+    },
+    "India": {
+      "evening": 56,
+      "day": 53
+    }
+  },
+  "avg_shift_duration": 7.988108138616096,
+  "total_hours_worked": 23588.88333333333,
+  "unmapped_shifts_count": 84,
+  "employees_list": [
+    "CAN_01",
+    "CAN_02",
+    "CAN_03",
+    "CAN_04",
+    "CAN_05",
+    "CAN_06",
+    "CAN_07",
+    "CAN_08",
+    "CAN_09",
+    "IND_01",
+    "SRB_01",
+    "SRB_02",
+    "SRB_03",
+    "SRB_04"
+  ]
+}

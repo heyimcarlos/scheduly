@@ -1,0 +1,13 @@
+.git
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+node_modules
+**/node_modules
+dist
+build
+packages/ml/src/fatigue/outputs
+packages/ml/reports
+packages/ml/notebooks

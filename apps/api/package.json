@@ -1,0 +1,8 @@
+{
+    "name": "@scheduler/api",
+    "scripts": {
+        "dev": "uv run uvicorn main:app --reload",
+        "test": "pytest",
+        "lint": "ruff check ."
+    }
+}
