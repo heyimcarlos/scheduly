@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scheduly is a scheduling platform with AI-powered shift optimization. It uses OR-Tools CP-SAT solver for scheduling and LSTM models for fatigue prediction.
+Scheduler is a scheduling platform with AI-powered shift optimization. It uses OR-Tools CP-SAT solver for scheduling and LSTM models for fatigue prediction.
 
 ## Monorepo Structure
 

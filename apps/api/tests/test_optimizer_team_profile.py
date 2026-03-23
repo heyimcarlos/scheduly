@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from optimizer.optimizer import (
+from app.lib.optimizer import (
     EmployeeInput,
     ScheduleInput,
     ShiftDemandPoint,

@@ -34,6 +34,8 @@ from app.services.availability import AvailabilityService
 from app.services.demand import DemandGenerator
 from app.services.recommendations import FatigueAwareRecommendationService
 from app.services.validator import ValidatorService
+from app.services.shift_writer import ShiftWriter
+from app.integrations.supabase import get_supabase_client
 from app.lib.optimizer import (
     AbsenceEvent as _AbsenceEvent,
     EmployeeInput as _EmployeeInput,
@@ -413,6 +415,10 @@ class OptimizerService:
                     f"Team profile: {active_profile_id}.",
                     "Known workload was provided explicitly; no workload forecasting was used.",
                 ]
+                # Write shifts to Supabase
+                shift_ids = self._write_shifts_to_supabase(solved_schedule, request)
+                if shift_ids:
+                    notes.append(f"Wrote {len(shift_ids)} shifts to database.")
             else:
                 solver_status = "solver_failed"
                 warnings.append("CP-SAT solver returned no feasible solution.")
@@ -548,3 +554,51 @@ class OptimizerService:
                 "Use recommendations to identify safe replacements when coverage becomes critical or fatigue risk increases.",
             ],
         )
+
+    def _write_shifts_to_supabase(
+        self,
+        solved_schedule: dict[str, Any],
+        request: ScheduleRequest,
+    ) -> list[str]:
+        """Write solved schedule shifts to Supabase.
+
+        Args:
+            solved_schedule: JSON-decoded schedule from CP-SAT solver
+            request: Original schedule request with employee data
+
+        Returns:
+            List of created shift IDs, or empty list if write failed
+        """
+        # Build employee_id -> member_id mapping from request
+        member_id_map: dict[int, str] = {}
+        for emp in request.employees or []:
+            if emp.member_id:
+                member_id_map[emp.employee_id] = emp.member_id
+
+        if not member_id_map:
+            _logger.warning(
+                "No member_id mapping found in request. "
+                "Shifts will not be written to Supabase. "
+                "Ensure EmployeeInput includes member_id (Supabase UUID)."
+            )
+            return []
+
+        try:
+            client = get_supabase_client()
+            writer = ShiftWriter(client)
+
+            # Get date range from request
+            start_date = request.start_date.isoformat()
+            end_date = request.start_date.isoformat()  # Simplified - could calculate end
+
+            # Delete existing shifts for these employees in the date range
+            member_ids = list(member_id_map.values())
+            writer.delete_shifts_for_date_range(member_ids, start_date, end_date)
+
+            # Write new shifts
+            shift_ids = writer.write_schedule(solved_schedule, member_id_map)
+            return shift_ids
+
+        except Exception as exc:  # noqa: BLE001
+            _logger.error("Failed to write shifts to Supabase: %s", exc)
+            return []

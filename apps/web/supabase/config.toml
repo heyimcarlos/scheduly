@@ -1,4 +1,0 @@
-project_id = "anexyzyishklswqnhvqp"
-
-[functions.invite-user]
-verify_jwt = false
