@@ -16,10 +16,14 @@
     "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+
+    /* test for JSON*/
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"],
+      "@scheduly/shared": ["../../packages/shared/system_config.json"],
+      "@scheduly/shared/*": ["../../packages/shared/*"]
     },
     "skipLibCheck": true,
     "strict": false,

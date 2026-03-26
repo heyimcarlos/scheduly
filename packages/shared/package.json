@@ -1,0 +1,10 @@
+{
+  "name": "@scheduly/shared",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./system_config.json",
+  "exports": {
+    ".": "./system_config.json",
+    "./templates.json": "./templates.json"
+  }
+}

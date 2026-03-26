@@ -239,6 +239,34 @@ export function useCreateShiftsBulk() {
   });
 }
 
+export function useBulkUpsertTeamMembers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (members: TeamMember[]) => {
+      if (members.length === 0) return;
+      const rows = members.map(member => ({
+        id: member.id,
+        name: member.name,
+        initials: member.initials,
+        region: member.region,
+        role: member.role,
+        skills: member.skills,
+        fatigue_score: member.fatigueScore,
+        avatar: member.avatar ?? null,
+        seniority: member.seniority,
+        weekly_hours: member.weeklyHours ?? null,
+        contract_type: member.contractType,
+        max_hours: member.maxHours,
+        timezone: member.timezone,
+        email: member.email ?? null,
+      }));
+      const { error } = await supabase.from('team_members').upsert(rows);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['team_members'] }),
+  });
+}
+
 export function useDeleteShift() {
   const qc = useQueryClient();
   return useMutation({

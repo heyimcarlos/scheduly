@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@scheduly/shared": path.resolve(__dirname, "../../packages/shared")
     },
   },
 }));

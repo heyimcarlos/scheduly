@@ -1,0 +1,93 @@
+{
+  "templates": [
+    {
+      "key": "follow_the_sun_support",
+      "name": "Follow-the-Sun Support",
+      "description": "Multi-region coverage with hand-off slots across time zones. Ideal for 24/7 support teams spanning Canada, Serbia, and India.",
+      "canonicalSlots": 5,
+      "defaultRegions": ["canada", "serbia", "india"],
+      "slotPolicies": {
+        "Hybrid1": {
+          "coverage_label": "Serbia Hybrid Opener",
+          "coverage_role": "serbia_hybrid",
+          "allowed_regions": ["Serbia", "India"],
+          "preferred_regions": ["Serbia"],
+          "patch_regions": ["India"],
+          "fallback_penalty": 30,
+          "patch_penalty": 90,
+          "canonical": true,
+          "max_headcount": 1,
+          "min_headcount": 1
+        },
+        "Morning1": {
+          "coverage_label": "Canada Day Early",
+          "coverage_role": "canada_day",
+          "allowed_regions": ["Canada"],
+          "preferred_regions": ["Canada"]
+        },
+        "Morning2": {
+          "coverage_label": "Canada Day Core",
+          "coverage_role": "canada_day",
+          "allowed_regions": ["Canada", "Serbia"],
+          "preferred_regions": ["Canada"],
+          "fallback_penalty": 200,
+          "canonical": true,
+          "min_headcount": 1
+        },
+        "Morning3": {
+          "coverage_label": "Canada Day Late",
+          "coverage_role": "canada_day",
+          "allowed_regions": ["Canada"],
+          "preferred_regions": ["Canada"]
+        },
+        "Evening1": {
+          "coverage_label": "Canada Evening Early",
+          "coverage_role": "canada_evening",
+          "allowed_regions": ["Canada"],
+          "preferred_regions": ["Canada"]
+        },
+        "Evening2": {
+          "coverage_label": "Canada Evening Core",
+          "coverage_role": "canada_evening",
+          "allowed_regions": ["Canada"],
+          "preferred_regions": ["Canada"],
+          "canonical": true,
+          "min_headcount": 1
+        },
+        "Night1": {
+          "coverage_label": "Overnight Exception",
+          "coverage_role": "overnight_exception",
+          "allowed_regions": ["Serbia", "India"],
+          "preferred_regions": ["Serbia", "India"],
+          "patch_regions": ["India"],
+          "fallback_penalty": 40,
+          "patch_penalty": 110,
+          "canonical": true,
+          "min_headcount": 1
+        }
+      },
+      "rules": {
+        "min_rest_hours": 12,
+        "days_off_required": 4,
+        "min_weekly_hours_required": 40,
+        "overtime_threshold_hours": 40,
+        "enforce_senior_per_shift": true
+      }
+    },
+    {
+      "key": "__scratch__",
+      "name": "Start from Scratch",
+      "description": "Build your own regions, shift slots, and policies from scratch.",
+      "canonicalSlots": 0,
+      "defaultRegions": [],
+      "slotPolicies": {},
+      "rules": {
+        "min_rest_hours": 12,
+        "days_off_required": 4,
+        "min_weekly_hours_required": 40,
+        "overtime_threshold_hours": 40,
+        "enforce_senior_per_shift": true
+      }
+    }
+  ]
+}

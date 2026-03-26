@@ -1,4 +1,50 @@
-export type Region = 'canada' | 'india' | 'serbia';
+// --- Region metadata registry ---
+export interface RegionMeta {
+  id: string;
+  name: string;
+  prefix: string;
+  timezone: string;
+  utcOffset: number;
+  color: string; // CSS value e.g. "hsl(var(--team-canada))"
+}
+
+// Static registry — runtime data loaded via useRegions() hook
+export const REGISTRY: Record<string, RegionMeta> = {
+  canada: {
+    id: 'canada',
+    name: 'Canada',
+    prefix: 'CAN',
+    timezone: 'America/Toronto',
+    utcOffset: -5,
+    color: 'hsl(var(--team-canada))',
+  },
+  serbia: {
+    id: 'serbia',
+    name: 'Serbia',
+    prefix: 'SRB',
+    timezone: 'Europe/Belgrade',
+    utcOffset: 1,
+    color: 'hsl(var(--team-serbia))',
+  },
+  india: {
+    id: 'india',
+    name: 'India',
+    prefix: 'IND',
+    timezone: 'Asia/Kolkata',
+    utcOffset: 5.5,
+    color: 'hsl(var(--team-india))',
+  },
+};
+
+export const ALL_REGION_IDS = Object.keys(REGISTRY);
+
+export const getRegionMeta = (id: string): RegionMeta | undefined => REGISTRY[id];
+export const getRegionColor = (id: string): string => REGISTRY[id]?.color ?? 'bg-muted';
+export const getRegionTimezone = (id: string): string => REGISTRY[id]?.timezone ?? 'UTC';
+export const getRegionName = (id: string): string => REGISTRY[id]?.name ?? id;
+
+// Open string type — existing 'canada' | 'india' | 'serbia' values still work
+export type Region = string;
 
 export type ViewMode = 'week' | 'month';
 
@@ -73,7 +119,8 @@ export const TIMEZONE_LABELS: Record<Timezone, string> = {
   'Europe/Belgrade': 'Serbia (Belgrade)',
 };
 
-export const REGION_COLORS: Record<Region, string> = {
+// Computed from REGISTRY — no longer hardcoded per-country
+export const REGION_COLORS: Record<string, string> = {
   canada: 'team-canada',
   india: 'team-india',
   serbia: 'team-serbia',
