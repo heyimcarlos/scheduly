@@ -206,7 +206,7 @@ export default function Onboarding() {
   const [timezone, setTimezone] = useState('America/Toronto');
 
   // Onboarding mode
-  const [mode, setMode] = useState<'template' | 'scratch'>('template');
+  const [mode, setMode] = useState<'template' | 'scratch'>('scratch');
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(SCRATCH_KEY);
 
   // Selected regions (region id → role)
