@@ -36,6 +36,8 @@ class SlotPolicyConfig(BaseModel):
     canonical: Optional[bool] = None
     min_headcount: int = Field(default=0, ge=0)
     max_headcount: Optional[int] = Field(default=None, ge=1)
+    utc_start: Optional[str] = None  # "HH:mm" UTC — slot timing
+    utc_end: Optional[str] = None    # "HH:mm" UTC — slot timing
 
 
 class TeamProfileRuleConfig(BaseModel):
@@ -160,6 +162,7 @@ class EmployeeInput(BaseModel):
     member_id: Optional[str] = None  # Supabase UUID, required for shift writes
     region: str
     employee_name: Optional[str] = None
+    timezone: Optional[str] = None  # IANA timezone, e.g. "Asia/Kolkata" — derived from region config
 
 
 class ShiftDemandPoint(BaseModel):
@@ -502,3 +505,19 @@ class ScheduleJobResponse(BaseModel):
     error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class LocalToUtcRequest(BaseModel):
+    """Convert local HH:mm times to UTC HH:mm given a service timezone."""
+
+    local_start: str  # "HH:mm"
+    local_end: str  # "HH:mm"
+    service_timezone: str  # IANA timezone, e.g. "America/Toronto"
+    overnight: bool = False  # True if end time is on the next calendar day
+
+
+class LocalToUtcResponse(BaseModel):
+    """UTC times computed from local times and timezone."""
+
+    utc_start: str  # "HH:mm"
+    utc_end: str  # "HH:mm"

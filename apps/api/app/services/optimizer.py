@@ -358,6 +358,7 @@ class OptimizerService:
                     employee_id=employee.employee_id,
                     region=employee.region,
                     employee_name=employee.employee_name,
+                    timezone=employee.timezone,
                 )
                 for employee in request.employees
             ]

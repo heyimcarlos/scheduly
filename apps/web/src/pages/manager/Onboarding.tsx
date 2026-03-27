@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { parseISO } from 'date-fns';
+import { toZonedTime, toDate } from 'date-fns-tz';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -60,6 +62,8 @@ export interface SlotFormData {
   name: string;
   localStartTime: string; // "HH:mm"
   localEndTime: string;   // "HH:mm"
+  utcStart?: string;      // "HH:mm" UTC — computed on save
+  utcEnd?: string;        // "HH:mm" UTC — computed on save
   shiftType: 'day' | 'evening' | 'night';
   coverageLabel: string;
   coverageRole: string;
@@ -91,6 +95,8 @@ export interface ScratchSlot {
   name: string;
   localStartTime: string;
   localEndTime: string;
+  utcStart?: string;    // "HH:mm" UTC
+  utcEnd?: string;      // "HH:mm" UTC
   shiftType: 'day' | 'evening' | 'night';
   coverageLabel: string;
   coverageRole: string;
@@ -111,15 +117,27 @@ function scratchSlotToPolicy(slot: ScratchSlot): SlotPolicy {
     canonical: slot.canonical,
     min_headcount: slot.minHeadcount,
     max_headcount: slot.maxHeadcount,
+    utc_start: slot.utcStart,
+    utc_end: slot.utcEnd,
   };
 }
 
 /** Convert SlotPolicy back to ScratchSlot (for editing) */
-function policyToScratchSlot(key: string, policy: SlotPolicy, localStart = '09:00', localEnd = '17:00', shiftType: 'day' | 'evening' | 'night' = 'day'): ScratchSlot {
+function policyToScratchSlot(
+  key: string,
+  policy: SlotPolicy,
+  localStart = '09:00',
+  localEnd = '17:00',
+  shiftType: 'day' | 'evening' | 'night' = 'day',
+  utcStart?: string,
+  utcEnd?: string,
+): ScratchSlot {
   return {
     name: policy.coverage_label || key,
     localStartTime: localStart,
     localEndTime: localEnd,
+    utcStart: utcStart ?? policy.utc_start,
+    utcEnd: utcEnd ?? policy.utc_end,
     shiftType,
     coverageLabel: policy.coverage_label,
     coverageRole: policy.coverage_role,
@@ -347,6 +365,8 @@ export default function Onboarding() {
       name: slot.name,
       localStartTime: slot.localStartTime,
       localEndTime: slot.localEndTime,
+      utcStart: slot.utcStart,
+      utcEnd: slot.utcEnd,
       shiftType: slot.shiftType,
       coverageLabel: slot.coverageLabel,
       coverageRole: slot.coverageRole,
@@ -376,10 +396,18 @@ export default function Onboarding() {
   const handleSaveSlot = useCallback(() => {
     if (!slotForm.name || !slotForm.coverageLabel) return;
     const key = slotForm.name.replace(/\s+/g, '') + Date.now().toString(36);
+    const serviceTz = activeTeamProfileConfig?.service_timezone ?? 'America/Toronto';
+    const utcStart = localToUtc(slotForm.localStartTime, serviceTz);
+    // Overnight: local end time is on the next calendar day
+    const localEnd = slotForm.localEndTime;
+    const overnight = localEnd < slotForm.localStartTime;
+    const utcEnd = localToUtc(localEnd, serviceTz);
     const newSlot: ScratchSlot = {
       name: slotForm.name,
       localStartTime: slotForm.localStartTime,
-      localEndTime: slotForm.localEndTime,
+      localEndTime: localEnd,
+      utcStart,
+      utcEnd,
       shiftType: slotForm.shiftType,
       coverageLabel: slotForm.coverageLabel,
       coverageRole: slotForm.coverageRole,
@@ -394,7 +422,7 @@ export default function Onboarding() {
     setAddingSlot(false);
     setEditingSlotKey(null);
     setSlotForm(EMPTY_SLOT_FORM);
-  }, [slotForm]);
+  }, [slotForm, activeTeamProfileConfig?.service_timezone]);
 
   const handleCancelSlotForm = useCallback(() => {
     setAddingSlot(false);
@@ -604,6 +632,7 @@ export default function Onboarding() {
                 editingSlotKey={editingSlotKey}
                 slotForm={slotForm}
                 selectedRegionIds={Object.keys(selectedRegions)}
+                serviceTimezone={activeTeamProfileConfig?.service_timezone ?? 'America/Toronto'}
                 onAddSlot={handleAddSlot}
                 onEditSlot={handleEditSlot}
                 onDeleteSlot={handleDeleteSlot}
@@ -961,6 +990,29 @@ function StepRules({
   );
 }
 
+/** Convert a UTC HH:mm time to local HH:mm in a given IANA timezone. */
+function utcToLocal(utcTime: string, timezone: string): string {
+  try {
+    const utcDate = parseISO(`2026-01-01T${utcTime}:00Z`);
+    const zoned = toZonedTime(utcDate, timezone);
+    return `${String(zoned.getHours()).padStart(2, '0')}:${String(zoned.getMinutes()).padStart(2, '0')}`;
+  } catch {
+    return utcTime; // fall back to UTC if conversion fails
+  }
+}
+
+/** Convert a local HH:mm in a given IANA timezone to UTC HH:mm. */
+function localToUtc(localTime: string, timezone: string): string {
+  try {
+    const refDateStr = `2026-01-01T${localTime}:00`;
+    const utcDate = toDate(refDateStr, { timeZone: timezone });
+    const utc = new Date(utcDate);
+    return `${String(utc.getUTCHours()).padStart(2, '0')}:${String(utc.getUTCMinutes()).padStart(2, '0')}`;
+  } catch {
+    return localTime;
+  }
+}
+
 function StepSlots({
   mode,
   slots,
@@ -968,6 +1020,7 @@ function StepSlots({
   editingSlotKey,
   slotForm,
   selectedRegionIds,
+  serviceTimezone,
   onAddSlot,
   onEditSlot,
   onDeleteSlot,
@@ -982,6 +1035,7 @@ function StepSlots({
   editingSlotKey: string | null;
   slotForm: SlotFormData;
   selectedRegionIds: string[];
+  serviceTimezone: string;
   onAddSlot: () => void;
   onEditSlot: (key: string) => void;
   onDeleteSlot: (key: string) => void;
@@ -1052,6 +1106,20 @@ function StepSlots({
                   onChange={e => onUpdateSlotForm('localEndTime', e.target.value)}
                 />
               </div>
+              {/* Show computed UTC equivalent */}
+              {slotForm.localStartTime && slotForm.localEndTime && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">UTC equivalent</Label>
+                  <div className="flex gap-3 items-center h-9 px-3 text-xs text-muted-foreground border border-border rounded-md bg-muted/30">
+                    {slotForm.utcStart ?? '–'} – {slotForm.utcEnd ?? '–'} UTC
+                    {serviceTimezone !== 'UTC' && (
+                      <span className="text-[10px]">
+                        ({serviceTimezone})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs">Shift Type</Label>
                 <Select value={slotForm.shiftType} onValueChange={v => onUpdateSlotForm('shiftType', v as SlotFormData['shiftType'])}>
@@ -1205,6 +1273,23 @@ function StepSlots({
                   <p className="text-xs text-muted-foreground mb-3">
                     Allowed: {policy.allowed_regions.join(', ')}
                   </p>
+                )}
+
+                {/* Slot timing: UTC (stored) + local (computed) */}
+                {(policy.utc_start || policy.utc_end) && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {policy.utc_start && policy.utc_end && (
+                      <Badge variant="outline" className="text-xs font-mono">
+                        {policy.utc_start} – {policy.utc_end} UTC
+                      </Badge>
+                    )}
+                    {serviceTimezone && (
+                      <Badge variant="outline" className="text-xs font-mono">
+                        {utcToLocal(policy.utc_start ?? '00:00', serviceTimezone)} –{' '}
+                        {utcToLocal(policy.utc_end ?? '00:00', serviceTimezone)} local
+                      </Badge>
+                    )}
+                  </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-3">

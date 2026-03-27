@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -121,6 +120,7 @@ class EmployeeInput:
     employee_id: int
     region: str
     employee_name: Optional[str] = None
+    timezone: Optional[str] = None  # IANA timezone, e.g. "Asia/Kolkata"
 
 
 @dataclass
@@ -241,6 +241,11 @@ def _merge_inline_team_profile(
         or merged_config.get("raw_data_timezone"),
         "slot_policies": merged_slot_policies,
     }
+
+    # To verify: Add this debug temporarily in solve_scheduling after the merge:
+    logger.info("Merged slot policies: %s", {
+      k: v.get("allowed_regions") for k, v in merged_slot_policies.items()
+    })
 
     profiles[resolved_id] = merged_profile
     merged_config["team_profiles"] = profiles
@@ -893,7 +898,9 @@ def _add_region_eligibility_constraints(
             continue
 
         for e_idx, employee in enumerate(employees):
-            if employee.region in allowed_regions:
+            emp_region_lower = employee.region.lower()
+            allowed_lower = {r.lower() for r in allowed_regions}
+            if emp_region_lower in allowed_lower:
                 continue
 
             for d in range(num_days):
@@ -1563,6 +1570,23 @@ def export_schedule_to_json(
                         shifts[(e_idx, d, slot_name)]
                     ):
                         info = slot_occurrences_by_day[d][slot_name]
+                        utc_start = info["utc_start_at"]
+                        utc_end = info["utc_end_at"]
+
+                        # Compute per-employee local times from UTC using the employee's
+                        # region timezone (not the service timezone). This ensures that when
+                        # the shift is displayed, the local time matches what the employee
+                        # actually works in their home timezone.
+                        emp_tz = _resolve_zoneinfo(emp.timezone)
+                        if emp_tz is not None:
+                            start_local = utc_start.astimezone(emp_tz)
+                            end_local = utc_end.astimezone(emp_tz)
+                            local_start = start_local.strftime("%H:%M")
+                            local_end = end_local.strftime("%H:%M")
+                        else:
+                            local_start = info.get("local_start_time")
+                            local_end = info.get("local_end_time")
+
                         day_entry["shift"] = {
                             "slot_name": slot_name,
                             "shift_type": info["shift_type"],
@@ -1570,10 +1594,10 @@ def export_schedule_to_json(
                             "coverage_role": info.get("coverage_role"),
                             "utc_start": info["utc_start"],
                             "utc_end": info["utc_end"],
-                            "utc_start_at": info["utc_start_at"].isoformat(),
-                            "utc_end_at": info["utc_end_at"].isoformat(),
-                            "local_start_time": info.get("local_start_time"),
-                            "local_end_time": info.get("local_end_time"),
+                            "utc_start_at": utc_start.isoformat(),
+                            "utc_end_at": utc_end.isoformat(),
+                            "local_start_time": local_start,
+                            "local_end_time": local_end,
                             "canonical": info["canonical"],
                         }
                         break
@@ -1742,6 +1766,7 @@ def solve_scheduling(inp: ScheduleInput) -> Optional[str]:
     #     effective_inp.start_date,
     #     effective_inp.num_days,
     # )
+
 
     return export_schedule_to_json(
         final_solver,

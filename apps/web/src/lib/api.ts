@@ -17,6 +17,7 @@ export interface EmployeeInput {
   employee_id: number;
   region: string;
   employee_name?: string;
+  timezone?: string;  // IANA timezone, e.g. "Asia/Kolkata" — passed to backend for per-employee local times
 }
 
 export interface ShiftDemandPoint {
@@ -286,5 +287,34 @@ export async function analyzeAbsenceImpact(
   return apiFetch<AbsenceImpactResponse>('/absence/impact', {
     method: 'POST',
     body: JSON.stringify(request),
+  });
+}
+
+export interface LocalToUtcResponse {
+  utc_start: string;  // "HH:mm"
+  utc_end: string;    // "HH:mm"
+}
+
+/**
+ * POST /utils/local-to-utc
+ *
+ * Convert local HH:mm times to UTC given a service timezone.
+ * The `overnight` flag should be true when the shift crosses midnight
+ * in the local timezone (e.g., 21:00-05:00).
+ */
+export async function localToUtc(
+  localStart: string,
+  localEnd: string,
+  serviceTimezone: string,
+  overnight: boolean,
+): Promise<LocalToUtcResponse> {
+  return apiFetch<LocalToUtcResponse>('/utils/local-to-utc', {
+    method: 'POST',
+    body: JSON.stringify({
+      local_start: localStart,
+      local_end: localEnd,
+      service_timezone: serviceTimezone,
+      overnight,
+    }),
   });
 }
