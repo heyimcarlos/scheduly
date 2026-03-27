@@ -324,6 +324,7 @@ export function SchedulerLayout() {
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
           onProcessNotes={handleProcessNotes}
+          fatigueAlerts={redistribute.fatigueAlerts}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           <CalendarHeader

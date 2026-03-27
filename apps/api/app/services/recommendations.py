@@ -38,6 +38,7 @@ class RecommendationCandidate:
     rest_hours_since_last_shift: float | None
     consecutive_days_worked: int
     rationale: str
+    absentee_fatigue_score: float | None = None
 
 
 class FatigueAwareRecommendationService:
@@ -60,6 +61,7 @@ class FatigueAwareRecommendationService:
         recent_assignments: list[dict[str, Any]] | None = None,
         top_n: int = 5,
         prefer_fatigue_model: bool = False,
+        min_fatigue_score: float | None = None,
     ) -> list[RecommendationCandidate]:
         windows = self.availability_service.build_windows(
             employees=employees,
@@ -73,6 +75,14 @@ class FatigueAwareRecommendationService:
         day_offset = int(absence_event["day_offset"])
         target_window = self._resolve_target_window(
             windows, absent_employee_id, day_offset
+        )
+
+        absent_history = recent_by_employee.get(absent_employee_id, [])
+        absentee_fatigue_score, _ = self._compute_fatigue_score(
+            candidate_history=absent_history,
+            target_window=target_window,
+            prefer_model=prefer_fatigue_model,
+            employee_id=absent_employee_id,
         )
 
         candidates: list[RecommendationCandidate] = []
@@ -99,16 +109,25 @@ class FatigueAwareRecommendationService:
                 prefer_model=prefer_fatigue_model,
                 employee_id=window.employee_id,
             )
+            if min_fatigue_score is not None and fatigue_score > min_fatigue_score:
+                continue
+
             rest_hours = self._rest_hours_since_last_shift(
                 candidate_history, target_window.utc_start
             )
             consecutive_days = self._consecutive_days_worked(
                 candidate_history, target_window.local_date
             )
+            absentee_risk = (
+                absentee_fatigue_score * 30.0
+                if absentee_fatigue_score is not None and absentee_fatigue_score > 0.5
+                else 0.0
+            )
             ranking_score = round(
                 (region_priority * 100.0)
                 + (overtime_hours * 12.0)
-                + (fatigue_score * 75.0),
+                + (fatigue_score * 75.0)
+                + absentee_risk,
                 3,
             )
 
@@ -137,6 +156,7 @@ class FatigueAwareRecommendationService:
                         fatigue_score=fatigue_score,
                         rest_hours=rest_hours,
                     ),
+                    absentee_fatigue_score=round(absentee_fatigue_score, 3),
                 )
             )
 

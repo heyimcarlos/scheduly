@@ -7,6 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Brain, Users, Lightbulb, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FatigueAlertsPanel } from './FatigueAlertsPanel';
+import type { FatigueAlert } from '@/lib/api';
 
 interface SchedulerSidebarProps {
   teamMembers: TeamMember[];
@@ -14,6 +16,7 @@ interface SchedulerSidebarProps {
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
   onProcessNotes: (notes: string) => void;
+  fatigueAlerts?: FatigueAlert[];
 }
 
 export function SchedulerSidebar({
@@ -22,10 +25,12 @@ export function SchedulerSidebar({
   onAcceptSuggestion,
   onRejectSuggestion,
   onProcessNotes,
+  fatigueAlerts = [],
 }: SchedulerSidebarProps) {
   const [expandedSections, setExpandedSections] = useState({
     notes: true,
     suggestions: true,
+    alerts: true,
     team: true,
   });
 
@@ -115,6 +120,36 @@ export function SchedulerSidebar({
               </div>
             )}
           </div>
+
+          <Separator className="bg-sidebar-border" />
+
+          {/* Fatigue Alerts Section */}
+          {fatigueAlerts.length > 0 && (
+            <div>
+              <button
+                onClick={() => toggleSection('alerts')}
+                className="flex items-center justify-between w-full text-left mb-2"
+              >
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-destructive" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Fatigue Alerts
+                  </span>
+                  <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-destructive/20 text-destructive">
+                    {fatigueAlerts.length}
+                  </span>
+                </div>
+                {expandedSections.alerts ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
+              {expandedSections.alerts && (
+                <FatigueAlertsPanel alerts={fatigueAlerts} />
+              )}
+            </div>
+          )}
 
           <Separator className="bg-sidebar-border" />
 

@@ -158,6 +158,11 @@ class ScheduleInput:
     overtime_threshold_hours: int = 40
     # Maximum wall-clock seconds allowed per solver pass (None = unlimited)
     time_limit_seconds: Optional[float] = 120.0
+    # Pre-computed fatigue trajectories: employee_id -> [score per day]
+    fatigue_trajectories: Dict[int, List[float]] = field(default_factory=dict)
+    # Fatigue-aware scheduling parameters
+    fatigue_weight: float = 0.0  # Weight of fatigue penalty in objective (0 = disabled)
+    fatigue_threshold: float = 0.6  # Employees above this fatigue are deprioritized for extra shifts
 
 
 # ---------------------------------------------------------------------------
@@ -966,6 +971,49 @@ def _consecutive_off_rewards(
     return rewards
 
 
+def _fatigue_penalties(
+    model: cp_model.CpModel,
+    shifts: Dict,
+    is_working: Dict,
+    employees: List[EmployeeInput],
+    fatigue_trajectories: Dict[int, List[float]],
+    slot_occurrences_by_day: Dict[int, Dict[str, dict]],
+    num_days: int,
+    fatigue_weight: float = 0.0,
+    fatigue_threshold: float = 0.6,
+) -> List[cp_model.LinearExpr]:
+    """Add fatigue cost for employees working while already elevated.
+
+    For each (employee, day) where fatigue > fatigue_threshold and they are assigned
+    to a slot, adds a penalty = (fatigue_score - threshold) * fatigue_weight.
+    This discourages the solver from stacking shifts on already-fatigued employees.
+    """
+    if fatigue_weight <= 0 or not fatigue_trajectories:
+        return []
+
+    penalties: List[cp_model.LinearExpr] = []
+
+    for e_idx, emp in enumerate(employees):
+        trajectory = fatigue_trajectories.get(emp.employee_id, [])
+        for d in range(num_days):
+            fatigue_score = trajectory[d] if d < len(trajectory) else 0.0
+            if fatigue_score <= fatigue_threshold:
+                continue
+
+            # This employee is working today and has elevated fatigue
+            # Check if assigned to any slot
+            for slot_name, slot_occ in slot_occurrences_by_day[d].items():
+                key = (e_idx, d, slot_name)
+                if key not in shifts:
+                    continue
+                # Penalize proportional to how far above threshold
+                excess = fatigue_score - fatigue_threshold
+                penalty = excess * fatigue_weight * 10  # scale up for CP-SAT integer solver
+                penalties.append(shifts[key] * int(penalty))
+
+    return penalties
+
+
 # ---------------------------------------------------------------------------
 # Capacity pre-check
 # ---------------------------------------------------------------------------
@@ -1186,9 +1234,21 @@ def _run_pass1(
         model, is_working, inp.employees, inp.absences, inp.num_days
     )
 
+    fatigue_pt = _fatigue_penalties(
+        model,
+        shifts,
+        is_working,
+        inp.employees,
+        inp.fatigue_trajectories,
+        slot_occurrences_by_day,
+        inp.num_days,
+        fatigue_weight=inp.fatigue_weight,
+        fatigue_threshold=inp.fatigue_threshold,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
+        + fatigue_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(
@@ -1405,9 +1465,21 @@ def _run_pass2(
         model, is_working, inp.employees, inp.absences, inp.num_days
     )
 
+    fatigue_pt = _fatigue_penalties(
+        model,
+        shifts,
+        is_working,
+        inp.employees,
+        inp.fatigue_trajectories,
+        slot_occurrences_by_day,
+        inp.num_days,
+        fatigue_weight=inp.fatigue_weight,
+        fatigue_threshold=inp.fatigue_threshold,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
+        + fatigue_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(shifts, inp.employees, all_slots, inp.num_days)
@@ -1450,6 +1522,7 @@ def export_schedule_to_json(
     num_days: int,
     team_profile_id: str,
     service_timezone: Optional[str],
+    fatigue_trajectories: Dict[int, List[float]] = {},
 ) -> str:
     """Serialize final schedule to JSON string."""
     schedule_data = {
@@ -1478,6 +1551,11 @@ def export_schedule_to_json(
                 "is_working": bool(solver.value(is_working[(e_idx, d)])),
                 "shift": None,
             }
+
+            # Add per-day fatigue data
+            traj = fatigue_trajectories.get(emp.employee_id, [])
+            day_entry["fatigue_score"] = round(traj[d], 3) if d < len(traj) else 0.0
+            day_entry["cumulative_fatigue"] = round(sum(traj[: d + 1]), 3) if d < len(traj) else 0.0
 
             if day_entry["is_working"]:
                 for slot_name in slot_names:
@@ -1676,6 +1754,7 @@ def solve_scheduling(inp: ScheduleInput) -> Optional[str]:
         effective_inp.num_days,
         resolved_profile_id,
         service_timezone,
+        fatigue_trajectories=inp.fatigue_trajectories,
     )
 
 

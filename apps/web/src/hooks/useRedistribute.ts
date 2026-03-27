@@ -18,6 +18,7 @@ import {
   pollJob,
   ScheduleRequest,
   SolvedSchedule,
+  FatigueAlert,
 } from '@/lib/api';
 import { useActiveTeamProfile } from '@/hooks/useActiveTeamProfile';
 import { createShiftsBulk, type CreateShiftInput } from '@/hooks/useSchedulerData';
@@ -43,6 +44,8 @@ export interface UseRedistributeReturn {
   status: RedistributeStatus;
   /** The solved schedule payload — available when status === "completed". */
   solvedSchedule: SolvedSchedule | null;
+  /** Fatigue alerts from the solver — available when status === "completed". */
+  fatigueAlerts: FatigueAlert[];
   /** Error message — available when status === "failed". */
   error: string | null;
 }
@@ -55,6 +58,7 @@ export function useRedistribute(): UseRedistributeReturn {
   const [jobId, setJobId] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState<RedistributeStatus>('idle');
   const [solvedSchedule, setSolvedSchedule] = useState<SolvedSchedule | null>(null);
+  const [fatigueAlerts, setFatigueAlerts] = useState<FatigueAlert[]>([]);
   const [error, setError] = useState<string | null>(null);
   const memberIdsByEmployeeIdRef = useRef<Record<number, string>>({});
   const persistedJobIdsRef = useRef<Set<string>>(new Set());
@@ -124,7 +128,9 @@ export function useRedistribute(): UseRedistributeReturn {
         setLocalStatus('running');
       } else if (job.status === 'completed') {
         const schedule = job.result?.solved_schedule ?? null;
+        const alerts = job.result?.fatigue_alerts ?? [];
         setSolvedSchedule(schedule);
+        setFatigueAlerts(alerts);
         if (!schedule) {
           setLocalStatus('failed');
           setError('Solver completed without a solved schedule payload.');
@@ -193,5 +199,5 @@ export function useRedistribute(): UseRedistributeReturn {
 
   const isRunning = localStatus === 'pending' || localStatus === 'running' || localStatus === 'persisting';
 
-  return { trigger, isRunning, status: localStatus, solvedSchedule, error };
+  return { trigger, isRunning, status: localStatus, solvedSchedule, fatigueAlerts, error };
 }
