@@ -155,6 +155,7 @@ class ManualAbsence(BaseModel):
 
 class EmployeeInput(BaseModel):
     employee_id: int
+    member_id: Optional[str] = None  # Supabase UUID, required for shift writes
     region: str
     employee_name: Optional[str] = None
 

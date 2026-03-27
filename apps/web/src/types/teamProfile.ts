@@ -117,10 +117,12 @@ export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
   },
 };
 
-export const DEFAULT_REGIONS: Record<string, string> = {
-  canada: "primary",
-  serbia: "primary-opener",
-  india: "patch-only",
+// Default region roles used only in template pre-population
+// Replaced by dynamic region selection in onboarding
+export const DEFAULT_REGION_ROLES: Record<string, string> = {
+  canada: 'primary',
+  serbia: 'primary-opener',
+  india: 'patch-only',
 };
 
 export const DEFAULT_RULES: TeamProfileConfig["rules"] = {

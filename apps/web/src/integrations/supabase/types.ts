@@ -279,6 +279,76 @@ export type Database = {
         }
         Relationships: []
       }
+      regions: {
+        Row: {
+          color: string
+          created_at: string
+          dst_config: Json | null
+          id: string
+          is_active: boolean
+          name: string
+          prefix: string
+          timezone: string
+          utc_offset: number
+        }
+        Insert: {
+          color: string
+          created_at?: string
+          dst_config?: Json | null
+          id: string
+          is_active?: boolean
+          name: string
+          prefix: string
+          timezone: string
+          utc_offset: number
+        }
+        Update: {
+          color?: string
+          dst_config?: Json | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          prefix?: string
+          timezone?: string
+          utc_offset?: number
+        }
+        Relationships: []
+      }
+      template_registry: {
+        Row: {
+          canonical_slots: number
+          created_at: string
+          default_regions: Json
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          rules: Json | null
+          slot_policies: Json
+        }
+        Insert: {
+          canonical_slots?: number
+          created_at?: string
+          default_regions?: Json
+          description?: string | null
+          id: string
+          is_active?: boolean
+          name: string
+          rules?: Json | null
+          slot_policies?: Json
+        }
+        Update: {
+          canonical_slots?: number
+          default_regions?: Json
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          rules?: Json | null
+          slot_policies?: Json
+        }
+        Relationships: []
+      }
       time_off_requests: {
         Row: {
           created_at: string

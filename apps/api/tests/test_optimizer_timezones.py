@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from optimizer.optimizer import _build_slot_occurrences_by_day, load_system_config  # noqa: E402
+from app.lib.optimizer import _build_slot_occurrences_by_day, load_system_config  # noqa: E402
 
 
 def test_slot_occurrences_follow_toronto_dst_boundaries():

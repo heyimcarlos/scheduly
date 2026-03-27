@@ -8,14 +8,33 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { TeamMember, Region, Timezone, SeniorityLevel, ContractType, TIMEZONE_LABELS } from '@/types/scheduler';
+import { TeamMember, Region, Timezone, SeniorityLevel, ContractType, REGISTRY } from '@/types/scheduler';
 import { useToast } from '@/hooks/use-toast';
+
+// --- Static defaults for backward compatibility with /employees page ---
+const DEFAULT_REGION_OPTIONS = Object.values(REGISTRY).map(r => ({ value: r.id, label: r.name }));
+const DEFAULT_TIMEZONE_OPTIONS = [
+  { value: 'UTC', label: 'UTC' },
+  { value: 'America/Toronto', label: 'Canada (Toronto)' },
+  { value: 'Asia/Kolkata', label: 'India (Kolkata)' },
+  { value: 'Europe/Belgrade', label: 'Serbia (Belgrade)' },
+];
+const DEFAULT_REGION = 'canada';
+const DEFAULT_TIMEZONE = 'America/Toronto';
 
 interface EmployeeFormModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee?: TeamMember | null;
   onSave: (employee: TeamMember) => void;
+  /** Dynamic region options — omit to use predefined static list */
+  regionOptions?: Array<{ value: string; label: string }>;
+  /** Dynamic timezone options — omit to use predefined static list */
+  timezoneOptions?: Array<{ value: string; label: string }>;
+  /** Pre-selected region when creating a new employee */
+  defaultRegion?: string;
+  /** Pre-selected timezone when creating a new employee */
+  defaultTimezone?: string;
 }
 
 const emptyForm = {
@@ -23,19 +42,34 @@ const emptyForm = {
   initials: '',
   email: '',
   role: '',
-  region: 'canada' as Region,
-  timezone: 'America/Toronto' as Timezone,
+  region: DEFAULT_REGION as Region,
+  timezone: DEFAULT_TIMEZONE as Timezone,
   seniority: 'junior' as SeniorityLevel,
   contractType: 'full-time' as ContractType,
   maxHours: 40,
   skills: '',
 };
 
-export function EmployeeFormModal({ open, onOpenChange, employee, onSave }: EmployeeFormModalProps) {
+export function EmployeeFormModal({
+  open,
+  onOpenChange,
+  employee,
+  onSave,
+  regionOptions = DEFAULT_REGION_OPTIONS,
+  timezoneOptions = DEFAULT_TIMEZONE_OPTIONS,
+  defaultRegion = DEFAULT_REGION,
+  defaultTimezone = DEFAULT_TIMEZONE,
+}: EmployeeFormModalProps) {
   const { toast } = useToast();
   const isEdit = !!employee;
 
-  const [form, setForm] = useState(emptyForm);
+  const defaultForm = {
+    ...emptyForm,
+    region: (defaultRegion || DEFAULT_REGION) as Region,
+    timezone: (defaultTimezone || DEFAULT_TIMEZONE) as Timezone,
+  };
+
+  const [form, setForm] = useState(defaultForm);
 
   useEffect(() => {
     if (employee) {
@@ -52,9 +86,13 @@ export function EmployeeFormModal({ open, onOpenChange, employee, onSave }: Empl
         skills: employee.skills.join(', '),
       });
     } else {
-      setForm(emptyForm);
+      setForm({
+        ...defaultForm,
+        region: (defaultRegion || DEFAULT_REGION) as Region,
+        timezone: (defaultTimezone || DEFAULT_TIMEZONE) as Timezone,
+      });
     }
-  }, [employee, open]);
+  }, [employee, open, defaultRegion, defaultTimezone]);
 
   const handleSubmit = () => {
     if (!form.name || !form.initials || !form.role) {
@@ -117,9 +155,9 @@ export function EmployeeFormModal({ open, onOpenChange, employee, onSave }: Empl
             <Select value={form.region} onValueChange={v => set('region', v)}>
               <SelectTrigger className="h-8 text-sm bg-secondary border-border"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="canada">Canada</SelectItem>
-                <SelectItem value="india">India</SelectItem>
-                <SelectItem value="serbia">Serbia</SelectItem>
+                {regionOptions.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -128,8 +166,8 @@ export function EmployeeFormModal({ open, onOpenChange, employee, onSave }: Empl
             <Select value={form.timezone} onValueChange={v => set('timezone', v)}>
               <SelectTrigger className="h-8 text-sm bg-secondary border-border"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.entries(TIMEZONE_LABELS) as [Timezone, string][]).map(([tz, label]) => (
-                  <SelectItem key={tz} value={tz}>{label}</SelectItem>
+                {timezoneOptions.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

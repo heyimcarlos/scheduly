@@ -8,6 +8,7 @@ import logging
 import os
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -23,9 +24,9 @@ logger = logging.getLogger(__name__)
 # Config loader
 # ---------------------------------------------------------------------------
 
-_CONFIG_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "shared", "system_config.json"
-)
+# Resolve path to workspace root (apps/api/app/lib -> apps/api/app -> apps/api -> apps -> workspace)
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+_CONFIG_PATH = _WORKSPACE_ROOT / "packages" / "shared" / "system_config.json"
 
 
 def load_system_config() -> dict:
