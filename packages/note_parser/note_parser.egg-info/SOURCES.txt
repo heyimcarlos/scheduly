@@ -1,0 +1,7 @@
+note_parser_module.py
+pyproject.toml
+note_parser.egg-info/PKG-INFO
+note_parser.egg-info/SOURCES.txt
+note_parser.egg-info/dependency_links.txt
+note_parser.egg-info/requires.txt
+note_parser.egg-info/top_level.txt
