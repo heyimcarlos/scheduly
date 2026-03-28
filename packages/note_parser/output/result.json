@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "type": "sick_leave",
+      "employee": "Alice",
+      "affected_dates": [
+        "2026-03-29"
+      ],
+      "affected_shifts": null,
+      "swap_target": null,
+      "notes": "Alice reported sick for tomorrow.",
+      "urgency": "immediate",
+      "confidence": "high"
+    }
+  ]
+}

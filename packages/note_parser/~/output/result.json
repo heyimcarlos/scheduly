@@ -1,0 +1,16 @@
+[
+  {
+    "type": "late_arrival",
+    "employee": "John",
+    "affected_dates": [
+      "2026-03-28"
+    ],
+    "affected_shifts": [
+      "day"
+    ],
+    "swap_target": null,
+    "notes": "Missing first 2 hours of day shift.",
+    "urgency": "immediate",
+    "confidence": "high"
+  }
+]
