@@ -7,6 +7,7 @@ import { useNoteParser } from '@/hooks/useNoteParser';
 import { SchedulingEvent } from '@/lib/api';
 import {
   Sparkles,
+  Send,
   AlertCircle,
   Calendar,
   Clock,
@@ -90,10 +91,10 @@ export function NoteParser({ employeeRoster, onEventsProcessed }: NoteParserProp
         <CardHeader>
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
-            <CardTitle>Parse Manager Note</CardTitle>
+            <CardTitle>SME Notes</CardTitle>
           </div>
           <CardDescription>
-            Enter natural language notes about scheduling changes and let AI extract structured events
+            Enter notes about scheduling changes and let AI extract structured events
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -112,12 +113,12 @@ export function NoteParser({ employeeRoster, onEventsProcessed }: NoteParserProp
             {isPending ? (
               <>
                 <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                Parsing...
+                Processing...
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
-                Parse Note
+                <Send className="w-4 h-4" />
+                Process Notes
               </>
             )}
           </Button>
