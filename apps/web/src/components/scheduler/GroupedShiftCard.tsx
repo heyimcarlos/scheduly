@@ -1,17 +1,34 @@
 import { Shift, TeamMember } from "@/types/scheduler";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Clock, MapPin, Users } from "lucide-react";
+import { Clock, MapPin, Users, Sun, Moon, Sunset, Wifi } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+const FAMILY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Morning: Sun,
+  Evening: Sunset,
+  Night: Moon,
+  Hybrid: Wifi,
+  Other: Users,
+};
+
+const FAMILY_COLORS: Record<string, string> = {
+  Morning: "text-amber-500",
+  Evening: "text-purple-500",
+  Night: "text-blue-500",
+  Hybrid: "text-emerald-500",
+  Other: "text-gray-500",
+};
 
 interface GroupedShiftCardProps {
   shifts: Shift[];
   members: TeamMember[];
+  family?: string;
   style?: React.CSSProperties;
   onShiftClick?: (shift: Shift) => void;
 }
 
-export function GroupedShiftCard({ shifts, members, style, onShiftClick }: GroupedShiftCardProps) {
+export function GroupedShiftCard({ shifts, members, family, style, onShiftClick }: GroupedShiftCardProps) {
   if (!shifts.length || !members.length) return null;
 
   const firstShift = shifts[0];
@@ -23,6 +40,9 @@ export function GroupedShiftCard({ shifts, members, style, onShiftClick }: Group
     regionCount === 1
       ? members[0].region.charAt(0).toUpperCase() + members[0].region.slice(1)
       : `${regionCount} regions`;
+
+  const Icon = family ? (FAMILY_ICONS[family] ?? Users) : Users;
+  const iconColorClass = family ? (FAMILY_COLORS[family] ?? "text-gray-500") : "text-primary";
 
   return (
     <Popover>
@@ -38,8 +58,9 @@ export function GroupedShiftCard({ shifts, members, style, onShiftClick }: Group
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1 text-xs font-semibold text-foreground">
-                <Users className="h-3 w-3 shrink-0 text-primary" />
+                <Icon className={cn("h-3 w-3 shrink-0", iconColorClass)} />
                 <span className="truncate">{shifts.length} assigned</span>
+                {family && <span className="text-[10px] text-muted-foreground">({family})</span>}
               </div>
               <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Clock className="h-2.5 w-2.5 shrink-0" />

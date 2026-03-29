@@ -139,6 +139,7 @@ export type Database = {
           member_id: string
           shift_type: string
           start_time: string
+          team_profile_id: string
           title: string | null
           updated_at: string
         }
@@ -154,6 +155,7 @@ export type Database = {
           member_id: string
           shift_type?: string
           start_time: string
+          team_profile_id: string
           title?: string | null
           updated_at?: string
         }
@@ -169,10 +171,18 @@ export type Database = {
           member_id?: string
           shift_type?: string
           start_time?: string
+          team_profile_id?: string
           title?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "shifts_team_profile_id_fkey"
+            columns: ["team_profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "shifts_member_id_fkey"
             columns: ["member_id"]
@@ -204,6 +214,7 @@ export type Database = {
           role: string
           seniority: string
           skills: string[]
+          team_profile_id: string
           timezone: string
           updated_at: string
           weekly_hours: number | null
@@ -222,6 +233,7 @@ export type Database = {
           role: string
           seniority: string
           skills?: string[]
+          team_profile_id: string
           timezone?: string
           updated_at?: string
           weekly_hours?: number | null
@@ -240,11 +252,20 @@ export type Database = {
           role?: string
           seniority?: string
           skills?: string[]
+          team_profile_id?: string
           timezone?: string
           updated_at?: string
           weekly_hours?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_profile_id_fkey"
+            columns: ["team_profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_profiles: {
         Row: {

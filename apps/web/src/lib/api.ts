@@ -17,6 +17,7 @@ export interface EmployeeInput {
   employee_id: number;
   region: string;
   employee_name?: string;
+  timezone?: string;  // IANA timezone, e.g. "Asia/Kolkata" — passed to backend for per-employee local times
 }
 
 export interface ShiftDemandPoint {
@@ -86,6 +87,7 @@ export interface EmergencyRecommendationRequest {
   recent_assignments?: HistoricalShiftAssignment[];
   top_n?: number;
   prefer_fatigue_model?: boolean;
+  min_fatigue_score?: number;  // filter: skip candidates above this threshold
 }
 
 export interface CoverageImpactItem {
@@ -125,6 +127,7 @@ export interface AbsenceImpactResponse {
     optional_replacement_count: number;
   };
   notes: string[];
+  absentee_fatigue_score?: number; // 0-1 fatigue of the absent employee
 }
 
 export interface ReplacementRecommendation {
@@ -142,6 +145,7 @@ export interface ReplacementRecommendation {
   ranking_score: number;
   fatigue_score: number;
   fatigue_source: string;
+  absentee_fatigue_score?: number;  // fatigue of the absent employee (Story 3)
   rest_hours_since_last_shift?: number;
   consecutive_days_worked: number;
   rationale: string;
@@ -178,6 +182,8 @@ export interface DayEntry {
   date: string;              // ISO date string: "YYYY-MM-DD"
   is_working?: boolean;
   shift: ShiftAssignment | null;
+  fatigue_score?: number;      // 0-1, from fatigue trajectory
+  cumulative_fatigue?: number; // running sum of fatigue up to this day
 }
 
 /** One row in the solved schedule — one employee's schedule for the period. */
@@ -204,6 +210,31 @@ export interface SchedulePlanResponse {
   solved_schedule: SolvedSchedule | null;
   warnings: string[];
   notes: string[];
+  fatigue_alerts?: FatigueAlert[];
+}
+
+export interface FatigueAlert {
+  employee_id: number;
+  employee_name?: string;
+  utc_date: string;
+  fatigue_score: number;    // 0-1
+  slot_name?: string;
+  shift_type?: string;
+  severity: 'warning' | 'critical';
+  message: string;
+}
+
+export interface FatigueScoresRequest {
+  start_date: string;
+  num_days: number;
+  employees: EmployeeInput[];
+  recent_assignments: HistoricalShiftAssignment[];
+}
+
+export interface FatigueScoresResponse {
+  start_date: string;
+  num_days: number;
+  fatigue_trajectories: Record<number, number[]>;  // employee_id -> [score per day, 0-1]
 }
 
 export interface ScheduleJobResponse {
@@ -254,6 +285,21 @@ export async function pollJob(jobId: string): Promise<ScheduleJobResponse> {
   return apiFetch<ScheduleJobResponse>(`/schedule/job/${jobId}`);
 }
 
+/**
+ * POST /fatigue/scores
+ *
+ * Computes per-employee fatigue trajectories without invoking the scheduler.
+ * Use to power fatigue rings after manual shift changes.
+ */
+export async function computeFatigueScores(
+  request: FatigueScoresRequest,
+): Promise<FatigueScoresResponse> {
+  return apiFetch<FatigueScoresResponse>('/fatigue/scores', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
 export async function getEmergencyRecommendations(
   request: EmergencyRecommendationRequest,
 ): Promise<EmergencyRecommendationResponse> {
@@ -271,3 +317,5 @@ export async function analyzeAbsenceImpact(
     body: JSON.stringify(request),
   });
 }
+
+

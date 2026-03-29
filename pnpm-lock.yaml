@@ -7,11 +7,10 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0
-    devDependencies:
       eslint:
         specifier: ^8.57.0
         version: 8.57.1
@@ -110,6 +109,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.7
         version: 1.2.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@scheduly/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@supabase/supabase-js':
         specifier: ^2.97.0
         version: 2.100.0
@@ -255,6 +257,8 @@ importers:
       eslint-config-prettier:
         specifier: ^9.1.0
         version: 9.1.2(eslint@9.39.4(jiti@1.21.7))
+
+  packages/shared: {}
 
   packages/typescript-config: {}
 

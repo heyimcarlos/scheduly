@@ -71,11 +71,13 @@ export interface TeamMember {
   maxHours: number;
   timezone: Timezone;
   email?: string;
+  teamProfileId: string;
 }
 
 export interface Shift {
   id: string;
   memberId: string;
+  teamProfileId: string;
   startTime: Date;
   endTime: Date;
   isPending: boolean; // Ghost shift
@@ -84,6 +86,7 @@ export interface Shift {
   isEfficient: boolean;
   title?: string;
   shiftType: ShiftType;
+  slotName?: string; // e.g. 'Morning1', 'Evening2', 'Night1' - from team profile slot
   hasRestViolation?: boolean; // 12h rest violation
 }
 

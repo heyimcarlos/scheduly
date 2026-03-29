@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { addDays, format, startOfWeek, isToday, getDay } from "date-fns";
+import { addDays, format, startOfWeek, isToday, getDay, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,15 +18,25 @@ import { cn } from "@/lib/utils";
 import { FatigueRing } from "./FatigueRing";
 import { CoverageRulesModal } from "./CoverageRulesModal";
 import { RecommendationSheet } from "./RecommendationSheet";
-import { useTeamMembers, useShifts, useCreateShift } from "@/hooks/useSchedulerData";
+import { DayDetailSheet } from "./DayDetailSheet";
+import { ShiftFormModal, ShiftFormData } from "./ShiftFormModal";
+import {
+  useTeamMembers,
+  useShifts,
+  useCreateShift,
+  useUpdateShift,
+  useDeleteShift,
+} from "@/hooks/useSchedulerData";
 import { useEmergencyRecommendations } from "@/hooks/useEmergencyRecommendations";
 import { useAbsenceImpact } from "@/hooks/useAbsenceImpact";
 import { ReplacementRecommendation } from "@/lib/api";
 import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift } from "@/types/scheduler";
-import { useRedistribute } from "@/hooks/useRedistribute";
+import { useRedistribute, type FatigueScoresMap } from "@/hooks/useRedistribute";
+import { useFatigueScores } from "@/hooks/useFatigueScores";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
 import { WorkloadTemplatePoint } from "@/types/teamProfile";
 import { toast } from "sonner";
+import { zonedLocalTimeToUtc } from "@/lib/timezone";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,15 +134,31 @@ export function TimelineScheduler() {
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [recommendationsOpen, setRecommendationsOpen] = useState(false);
 
+  // Day detail panel
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [dayPanelOpen, setDayPanelOpen] = useState(false);
+
+  // Shift form modal
+  const [shiftModalOpen, setShiftModalOpen] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [defaultDate, setDefaultDate] = useState<Date | undefined>();
+  const [defaultHour, setDefaultHour] = useState<number | undefined>();
+
   const spanNum = Number(viewSpan);
 
   // ── Real data ──────────────────────────────────────────────────────────────
   const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
   const { data: allShifts = [], isLoading: loadingShifts } = useShifts();
   const createShift = useCreateShift();
+  const updateShift = useUpdateShift();
+  const deleteShift = useDeleteShift();
   const redistribute = useRedistribute();
   const recommendations = useEmergencyRecommendations();
   const absenceImpact = useAbsenceImpact();
+  const fatigueScores = useFatigueScores();
+
+  // Combined fatigue scores: AI redistribution scores override manual scores
+  const [fatigueScoresMap, setFatigueScoresMap] = useState<FatigueScoresMap>({});
   const {
     activeTeamProfile,
     activeTeamProfileConfig,
@@ -166,8 +193,12 @@ export function TimelineScheduler() {
       toast.success("AI redistribution complete", {
         description: `${written} ghost shifts written from the timeline view.`,
       });
+      // Update fatigue rings with the freshly computed trajectory scores
+      if (Object.keys(redistribute.fatigueScores).length > 0) {
+        setFatigueScoresMap(redistribute.fatigueScores);
+      }
     }
-  }, [redistribute.error, redistribute.solvedSchedule, redistribute.status]);
+  }, [redistribute.error, redistribute.solvedSchedule, redistribute.status, redistribute.fatigueScores]);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const days = useMemo(
@@ -362,7 +393,7 @@ export function TimelineScheduler() {
   );
 
   const handleApplyRecommendation = useCallback(
-    (recommendation: ReplacementRecommendation) => {
+    async (recommendation: ReplacementRecommendation) => {
       if (!selectedShift) return;
 
       const replacementMember = teamMembers[recommendation.replacement_employee_id];
@@ -371,8 +402,9 @@ export function TimelineScheduler() {
         return;
       }
 
-      createShift.mutate({
+      await createShift.mutateAsync({
         memberId: replacementMember.id,
+        teamProfileId: replacementMember.teamProfileId,
         startTime: selectedShift.startTime,
         endTime: selectedShift.endTime,
         shiftType: selectedShift.shiftType,
@@ -380,8 +412,120 @@ export function TimelineScheduler() {
       });
       toast.success(`Coverage applied to ${replacementMember.name}`);
       setRecommendationsOpen(false);
+
+      // Recompute fatigue rings with the updated shift state
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const recommendationEmployees = teamMembers.map((member, idx) => ({
+        employee_id: idx,
+        region: member.region.charAt(0).toUpperCase() + member.region.slice(1),
+        employee_name: member.name,
+      }));
+      const memberIdsByEmployeeId = Object.fromEntries(
+        teamMembers.map((member, idx) => [idx, member.id]),
+      );
+      const recentAssignments = allShifts
+        .map((entry) => {
+          const employeeIndex = teamMembers.findIndex((member) => member.id === entry.memberId);
+          return {
+            employee_id: employeeIndex,
+            start_utc: entry.startTime.toISOString(),
+            end_utc: entry.endTime.toISOString(),
+            shift_type: inferShiftKind(entry),
+            slot_name: entry.title ?? undefined,
+          };
+        })
+        .filter((entry) => entry.employee_id >= 0);
+
+      try {
+        const scores = await fatigueScores.mutateAsync({
+          request: {
+            start_date: todayStr,
+            num_days: 7,
+            employees: recommendationEmployees,
+            recent_assignments: recentAssignments,
+          },
+          memberIdsByEmployeeId,
+        });
+        setFatigueScoresMap((prev) => ({ ...prev, ...scores }));
+      } catch {
+        // Non-critical — rings will show stale scores
+      }
     },
-    [createShift, selectedShift, teamMembers],
+    [allShifts, createShift, fatigueScores, selectedShift, teamMembers],
+  );
+
+  // ── Day detail panel ─────────────────────────────────────────────────────
+  const scheduleTz = activeTeamProfileConfig?.service_timezone ?? "UTC";
+  const [selectedTimezone] = useState<Timezone>(
+    () => (activeTeamProfileConfig?.service_timezone as Timezone) ?? "UTC",
+  );
+
+  const handleDayClick = useCallback((day: Date) => {
+    setSelectedDay(day);
+    setDayPanelOpen(true);
+  }, []);
+
+  const handleShiftClick = useCallback((shift: Shift) => {
+    setEditingShift(shift);
+    setDefaultDate(undefined);
+    setDefaultHour(undefined);
+    setShiftModalOpen(true);
+  }, []);
+
+  const handleEmptySlotClick = useCallback((hour: number) => {
+    setEditingShift(null);
+    setDefaultDate(selectedDay ?? undefined);
+    setDefaultHour(hour);
+    setShiftModalOpen(true);
+  }, [selectedDay]);
+
+  const handleShiftSave = useCallback(
+    (data: ShiftFormData, shiftId?: string) => {
+      const [startHour, startMinute] = data.startTime.split(":").map(Number);
+      const [endHour, endMinute] = data.endTime.split(":").map(Number);
+      const startMinutes = startHour * 60 + startMinute;
+      const endMinutes = endHour * 60 + endMinute;
+      const endDate =
+        endMinutes <= startMinutes
+          ? format(addDays(parseISO(data.date), 1), "yyyy-MM-dd")
+          : data.date;
+
+      const startTime = zonedLocalTimeToUtc(data.date, startHour, startMinute, scheduleTz);
+      const endTime = zonedLocalTimeToUtc(endDate, endHour, endMinute, scheduleTz);
+
+      if (shiftId) {
+        const existing = allShifts.find((s) => s.id === shiftId);
+        if (!existing) return;
+        updateShift.mutate({
+          ...existing,
+          memberId: data.memberId,
+          startTime,
+          endTime,
+          shiftType: data.shiftType,
+          title: data.title || undefined,
+        });
+        toast.success("Shift updated");
+      } else {
+        createShift.mutate({
+          memberId: data.memberId,
+          teamProfileId: activeTeamProfile!.id,
+          startTime,
+          endTime,
+          shiftType: data.shiftType,
+          title: data.title || undefined,
+        });
+        toast.success("Shift created");
+      }
+    },
+    [allShifts, updateShift, scheduleTz, createShift, activeTeamProfile],
+  );
+
+  const handleShiftDelete = useCallback(
+    (shiftId: string) => {
+      deleteShift.mutate(shiftId);
+      toast.success("Shift deleted");
+    },
+    [deleteShift],
   );
 
   const isCompact = spanNum >= 14;
@@ -410,6 +554,17 @@ export function TimelineScheduler() {
         isLoading={absenceImpact.isPending || recommendations.isPending}
         error={absenceImpact.error?.message ?? recommendations.error?.message ?? null}
         onApply={handleApplyRecommendation}
+      />
+
+      <DayDetailSheet
+        open={dayPanelOpen}
+        onOpenChange={setDayPanelOpen}
+        selectedDay={selectedDay}
+        allShifts={allShifts}
+        teamMembers={teamMembers}
+        scheduleTz={scheduleTz}
+        onShiftClick={handleShiftClick}
+        onEmptySlotClick={handleEmptySlotClick}
       />
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
@@ -516,8 +671,7 @@ export function TimelineScheduler() {
 
               {/* Employee rows */}
               {employees.map(({ emp, totalHours, hourStatus, targetPercent }) => {
-                const isCritical = emp.fatigueScore >= 80;
-                const isWarning = emp.fatigueScore >= 50;
+                const ringScore = fatigueScoresMap[emp.id] ?? emp.fatigueScore;
                 return (
                   <div
                     key={emp.id}
@@ -525,7 +679,7 @@ export function TimelineScheduler() {
                       `${rowHeight} flex items-center gap-2.5 px-3 border-b border-border`,
                     )}
                   >
-                    <FatigueRing score={emp.fatigueScore} size="md">
+                    <FatigueRing score={ringScore} size="md">
                       <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                         {emp.initials}
                       </div>
@@ -572,9 +726,10 @@ export function TimelineScheduler() {
                 {days.map((day, i) => (
                   <div
                     key={day.toISOString()}
+                    onClick={() => handleDayClick(day)}
                     className={`flex items-center justify-center text-xs font-medium border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
                       isToday(day) ? "bg-primary/10 text-primary" : "text-muted-foreground"
-                    }`}
+                    } cursor-pointer hover:bg-muted/50 transition-colors`}
                   >
                     {format(day, dateFormat)}
                   </div>
@@ -595,6 +750,7 @@ export function TimelineScheduler() {
                     return (
                       <div
                         key={day.toISOString()}
+                        onClick={() => handleDayClick(day)}
                         className={`flex items-center justify-center min-w-0 overflow-hidden ${isCompact ? "px-0" : "px-1"} border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
                           isToday(day) ? "bg-primary/5" : ""
                         }`}
@@ -603,8 +759,9 @@ export function TimelineScheduler() {
                           <div className="flex flex-col gap-0.5 w-full min-w-0 overflow-hidden px-0.5">
                             {dayShifts.map((shift) => {
                               const kind = inferShiftKind(shift);
-                              const startStr = format(shift.startTime, "HH:mm");
-                              const endStr = format(shift.endTime, "HH:mm");
+                              const scheduleTz = activeTeamProfileConfig?.service_timezone ?? "UTC";
+                              const startStr = formatInTimeZone(shift.startTime, scheduleTz, "HH:mm");
+                              const endStr = formatInTimeZone(shift.endTime, scheduleTz, "HH:mm");
 
                               const label = isCompact
                                 ? `${formatHour(startStr)}-${formatHour(endStr)}`
@@ -621,7 +778,10 @@ export function TimelineScheduler() {
                                 >
                                   <button
                                     type="button"
-                                    onClick={() => handleRecommendationRequest(shift)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleRecommendationRequest(shift);
+                                    }}
                                     className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100"
                                     aria-label="Get coverage recommendations"
                                   >
@@ -659,6 +819,18 @@ export function TimelineScheduler() {
           </div>
         </div>
       )}
+
+      <ShiftFormModal
+        open={shiftModalOpen}
+        onOpenChange={setShiftModalOpen}
+        teamMembers={teamMembers}
+        selectedTimezone={selectedTimezone}
+        editingShift={editingShift}
+        defaultDate={defaultDate}
+        defaultHour={defaultHour}
+        onSave={handleShiftSave}
+        onDelete={handleShiftDelete}
+      />
     </div>
   );
 }

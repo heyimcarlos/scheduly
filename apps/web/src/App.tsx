@@ -55,10 +55,10 @@ const App = () => (
                   </ManagerRoute>
                 }
               >
-                <Route path="/manager" element={<Index />} />
+                <Route path="/manager" element={<TimelineScheduler />} />
+                <Route path="/manager/calendar" element={<Index />} />
                 <Route path="/manager/employees" element={<Employees />} />
                 <Route path="/manager/requests" element={<ManagerRequests />} />
-                <Route path="/manager/timeline" element={<TimelineScheduler />} />
               </Route>
 
               {/* Employee routes */}
