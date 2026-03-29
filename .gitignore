@@ -9,5 +9,7 @@ dist-ssr
 .cache
 server/dist
 public/dist
-__pycache__
+__pycache__/
 .pyc
+.temp/
+
