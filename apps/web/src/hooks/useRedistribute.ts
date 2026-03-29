@@ -18,7 +18,9 @@ import {
   pollJob,
   ScheduleRequest,
   SolvedSchedule,
+  FatigueAlert,
 } from '@/lib/api';
+import { Shift } from '@/types/scheduler';
 import { useActiveTeamProfile } from '@/hooks/useActiveTeamProfile';
 import { createShiftsBulk, type CreateShiftInput } from '@/hooks/useSchedulerData';
 
@@ -43,11 +45,52 @@ export interface UseRedistributeReturn {
   status: RedistributeStatus;
   /** The solved schedule payload — available when status === "completed". */
   solvedSchedule: SolvedSchedule | null;
+  /** Fatigue alerts from the solver — available when status === "completed". */
+  fatigueAlerts: FatigueAlert[];
+  /** Converted Shift objects from solvedSchedule — available when status === "completed". */
+  convertedShifts: Shift[];
   /** Error message — available when status === "failed". */
   error: string | null;
 }
 
 const POLL_INTERVAL_MS = 3_000;
+
+/** Convert a SolvedSchedule (from the async job) into Shift objects for local UI state. */
+function solvedScheduleToShifts(
+  schedule: SolvedSchedule,
+  memberIdsByEmployeeId: Record<number, string>,
+): Shift[] {
+  return schedule.staff_schedules.flatMap((staffRow) => {
+    const memberId = memberIdsByEmployeeId[staffRow.employee_id];
+    if (!memberId) return [];
+
+    return staffRow.days
+      .filter((dayEntry) => dayEntry.shift)
+      .map((dayEntry) => {
+        const slotName = dayEntry.shift!.slot_name ?? dayEntry.shift!.shift_type;
+        // Infer shiftType from slot name for UI display
+        const shiftType: Shift['shiftType'] =
+          slotName.toLowerCase().includes('night') ? 'night' as const :
+          slotName.toLowerCase().includes('evening') ? 'evening' as const :
+          'day' as const;
+
+        return {
+          id: crypto.randomUUID(),
+          memberId,
+          startTime: new Date(dayEntry.shift!.utc_start_at),
+          endTime: new Date(dayEntry.shift!.utc_end_at),
+          isPending: false,
+          isConflict: false,
+          isHighFatigue: false,
+          isEfficient: false,
+          title: dayEntry.shift!.coverage_label
+            ? `AI ${dayEntry.shift!.coverage_label}`
+            : `AI ${dayEntry.shift!.slot_name ?? dayEntry.shift!.shift_type}`,
+          shiftType,
+        } satisfies Shift;
+      });
+  });
+}
 
 export function useRedistribute(): UseRedistributeReturn {
   const qc = useQueryClient();
@@ -55,6 +98,8 @@ export function useRedistribute(): UseRedistributeReturn {
   const [jobId, setJobId] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState<RedistributeStatus>('idle');
   const [solvedSchedule, setSolvedSchedule] = useState<SolvedSchedule | null>(null);
+  const [convertedShifts, setConvertedShifts] = useState<Shift[]>([]);
+  const [fatigueAlerts, setFatigueAlerts] = useState<FatigueAlert[]>([]);
   const [error, setError] = useState<string | null>(null);
   const memberIdsByEmployeeIdRef = useRef<Record<number, string>>({});
   const persistedJobIdsRef = useRef<Set<string>>(new Set());
@@ -124,7 +169,9 @@ export function useRedistribute(): UseRedistributeReturn {
         setLocalStatus('running');
       } else if (job.status === 'completed') {
         const schedule = job.result?.solved_schedule ?? null;
+        const alerts = job.result?.fatigue_alerts ?? [];
         setSolvedSchedule(schedule);
+        setFatigueAlerts(alerts);
         if (!schedule) {
           setLocalStatus('failed');
           setError('Solver completed without a solved schedule payload.');
@@ -152,6 +199,8 @@ export function useRedistribute(): UseRedistributeReturn {
         }
 
         setLocalStatus('completed');
+        const localShifts = solvedScheduleToShifts(schedule, memberIdsByEmployeeIdRef.current);
+        setConvertedShifts(localShifts);
       } else if (job.status === 'failed') {
         setLocalStatus('failed');
         setError(job.error ?? 'Solver failed with no error message.');
@@ -193,5 +242,5 @@ export function useRedistribute(): UseRedistributeReturn {
 
   const isRunning = localStatus === 'pending' || localStatus === 'running' || localStatus === 'persisting';
 
-  return { trigger, isRunning, status: localStatus, solvedSchedule, error };
+  return { trigger, isRunning, status: localStatus, solvedSchedule, fatigueAlerts, convertedShifts, error };
 }

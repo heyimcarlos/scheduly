@@ -9,6 +9,8 @@ export interface SlotPolicy {
   canonical?: boolean;
   min_headcount?: number;
   max_headcount?: number;
+  utc_start?: string;  // "HH:mm" UTC
+  utc_end?: string;    // "HH:mm" UTC
 }
 
 export interface DemandOverridePoint {

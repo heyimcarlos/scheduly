@@ -79,6 +79,12 @@ export function SchedulerLayout() {
 
   // Surface errors from the solver
   useEffect(() => {
+    if (redistribute.status === "completed" && redistribute.convertedShifts.length > 0) {
+      setLocalShifts(redistribute.convertedShifts);
+    }
+  }, [redistribute.status, redistribute.convertedShifts]);
+
+  useEffect(() => {
     if (redistribute.status === "failed") {
       toast.error("AI redistribution failed", {
         description: redistribute.error ?? "Unknown error from the solver",
@@ -112,10 +118,13 @@ export function SchedulerLayout() {
 
     // Build EmployeeInput list — optimizer int IDs are array indices.
     // region must be title-cased to match system_config.json keys ("Canada", "India", "Serbia")
+    // timezone is the employee's IANA region timezone, used by the backend to compute
+    // correct per-employee local times in the solver response (not the service timezone).
     const employees = teamMembers.map((m, idx) => ({
       employee_id: idx,
       region: m.region.charAt(0).toUpperCase() + m.region.slice(1),
       employee_name: m.name,
+      timezone: m.timezone,
     }));
     const memberIdsByEmployeeId = Object.fromEntries(
       teamMembers.map((member, idx) => [idx, member.id]),
@@ -324,6 +333,7 @@ export function SchedulerLayout() {
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
           onProcessNotes={handleProcessNotes}
+          fatigueAlerts={redistribute.fatigueAlerts}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           <CalendarHeader

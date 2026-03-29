@@ -36,6 +36,8 @@ class SlotPolicyConfig(BaseModel):
     canonical: Optional[bool] = None
     min_headcount: int = Field(default=0, ge=0)
     max_headcount: Optional[int] = Field(default=None, ge=1)
+    utc_start: Optional[str] = None  # "HH:mm" UTC — slot timing
+    utc_end: Optional[str] = None    # "HH:mm" UTC — slot timing
 
 
 class TeamProfileRuleConfig(BaseModel):
@@ -44,6 +46,8 @@ class TeamProfileRuleConfig(BaseModel):
     min_weekly_hours_required: int = Field(default=40, ge=0)
     overtime_threshold_hours: int = Field(default=40, ge=1)
     enforce_senior_per_shift: bool = True
+    fatigue_weight: float = 0.0
+    fatigue_threshold: float = 0.6
 
 
 class TeamProfileAnswersConfig(BaseModel):
@@ -158,6 +162,7 @@ class EmployeeInput(BaseModel):
     member_id: Optional[str] = None  # Supabase UUID, required for shift writes
     region: str
     employee_name: Optional[str] = None
+    timezone: Optional[str] = None  # IANA timezone, e.g. "Asia/Kolkata" — derived from region config
 
 
 class ShiftDemandPoint(BaseModel):
@@ -377,6 +382,17 @@ class CoverageImpactSummary(BaseModel):
     optional_replacement_count: int
 
 
+class FatigueAlert(BaseModel):
+    employee_id: int
+    employee_name: Optional[str] = None
+    utc_date: date
+    fatigue_score: float
+    slot_name: Optional[str] = None
+    shift_type: Optional[str] = None
+    severity: Literal["warning", "critical"] = "warning"
+    message: str
+
+
 class AbsenceImpactResponse(BaseModel):
     employee_id: int
     start_date: date
@@ -386,6 +402,7 @@ class AbsenceImpactResponse(BaseModel):
     impacts: List[CoverageImpactItem]
     summary: CoverageImpactSummary
     notes: List[str] = Field(default_factory=list)
+    absentee_fatigue_score: Optional[float] = None
 
 
 class AbsenceImpactRequest(BaseModel):
@@ -410,7 +427,8 @@ class EmergencyRecommendationRequest(BaseModel):
     absence_events: List[AbsenceEventWindow] = Field(default_factory=list)
     recent_assignments: List[HistoricalShiftAssignment] = Field(default_factory=list)
     top_n: int = Field(default=5, ge=1, le=20)
-    prefer_fatigue_model: bool = False
+    prefer_fatigue_model: bool = True
+    min_fatigue_score: Optional[float] = None
 
 
 class EmergencyRecommendationResponse(BaseModel):
@@ -447,6 +465,7 @@ class ScheduleRequest(BaseModel):
     employees: Optional[List[EmployeeInput]] = None
     team_profile_id: Optional[str] = None
     team_profile_config: Optional[TeamProfileConfig] = None
+    recent_assignments: Optional[List[HistoricalShiftAssignment]] = Field(default_factory=list)
 
 
 class DemandPlanResponse(BaseModel):
@@ -465,6 +484,7 @@ class SchedulePlanResponse(BaseModel):
     solved_schedule: Optional[Dict[str, Any]] = None
     warnings: List[str] = Field(default_factory=list)
     notes: List[str] = Field(default_factory=list)
+    fatigue_alerts: List[FatigueAlert] = Field(default_factory=list)
 
 
 class ScheduleJobStatus(BaseModel):

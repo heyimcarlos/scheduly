@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { addDays, format, startOfWeek, isToday, getDay } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import {
   ChevronLeft,
   ChevronRight,
@@ -603,8 +604,9 @@ export function TimelineScheduler() {
                           <div className="flex flex-col gap-0.5 w-full min-w-0 overflow-hidden px-0.5">
                             {dayShifts.map((shift) => {
                               const kind = inferShiftKind(shift);
-                              const startStr = format(shift.startTime, "HH:mm");
-                              const endStr = format(shift.endTime, "HH:mm");
+                              const scheduleTz = activeTeamProfileConfig?.service_timezone ?? "UTC";
+                              const startStr = formatInTimeZone(shift.startTime, scheduleTz, "HH:mm");
+                              const endStr = formatInTimeZone(shift.endTime, scheduleTz, "HH:mm");
 
                               const label = isCompact
                                 ? `${formatHour(startStr)}-${formatHour(endStr)}`

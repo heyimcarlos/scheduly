@@ -6,7 +6,8 @@ import json
 import logging
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from datetime import date
+from typing import Any, Dict, List
 
 from app.models.schemas import (
     AbsenceImpactRequest,
@@ -20,6 +21,7 @@ from app.models.schemas import (
     DemandSummary,
     EmergencyRecommendationRequest,
     EmergencyRecommendationResponse,
+    FatigueAlert,
     PlanningValidationResponse,
     RecommendationSummary,
     ReplacementRecommendationResponse,
@@ -32,6 +34,7 @@ from app.models.schemas import (
 )
 from app.services.availability import AvailabilityService
 from app.services.demand import DemandGenerator
+from app.services.fatigue_scoring import FatigueScoringService
 from app.services.recommendations import FatigueAwareRecommendationService
 from app.services.validator import ValidatorService
 from app.services.shift_writer import ShiftWriter
@@ -347,6 +350,7 @@ class OptimizerService:
         solver_status = "planning_ready"
         warnings: list[str] = []
         notes: list[str] = []
+        fatigue_alerts: list[FatigueAlert] = []
 
         if request.employees:
             employees_in = [
@@ -354,6 +358,7 @@ class OptimizerService:
                     employee_id=employee.employee_id,
                     region=employee.region,
                     employee_name=employee.employee_name,
+                    timezone=employee.timezone,
                 )
                 for employee in request.employees
             ]
@@ -388,6 +393,18 @@ class OptimizerService:
                 for item in expanded_absences
             ]
 
+            # Pre-compute fatigue trajectories for all employees
+            fatigue_trajectories: Dict[int, List[float]] = {}
+            scoring_service = FatigueScoringService(system_config=config)
+            recent_shifts = [item.model_dump() for item in (request.recent_assignments or [])]
+            fatigue_trajectories = scoring_service.score_team_fatigue(
+                employees=[e.model_dump() for e in request.employees],
+                start_date=request.start_date,
+                num_days=request.num_days,
+                recent_shifts=recent_shifts,
+                prefer_model=True,
+            )
+
             schedule_input = _ScheduleInput(
                 start_date=request.start_date,
                 num_days=request.num_days,
@@ -405,6 +422,13 @@ class OptimizerService:
                 ),
                 team_profile_id=active_profile_id,
                 team_profile_config=inline_profile,
+                fatigue_trajectories=fatigue_trajectories,
+                fatigue_weight=(
+                    inline_rules.fatigue_weight if inline_rules and hasattr(inline_rules, 'fatigue_weight') else 0.0
+                ),
+                fatigue_threshold=(
+                    inline_rules.fatigue_threshold if inline_rules and hasattr(inline_rules, 'fatigue_threshold') else 0.6
+                ),
             )
             schedule_json = solve_scheduling(schedule_input)
             if schedule_json:
@@ -419,6 +443,32 @@ class OptimizerService:
                 shift_ids = self._write_shifts_to_supabase(solved_schedule, request)
                 if shift_ids:
                     notes.append(f"Wrote {len(shift_ids)} shifts to database.")
+
+                # Build fatigue alerts
+                fatigue_alerts: List[FatigueAlert] = []
+                if solved_schedule and fatigue_trajectories:
+                    THRESHOLD_HIGH = 0.75
+                    THRESHOLD_CRITICAL = 0.85
+                    for emp_schedule in solved_schedule.get("staff_schedules", []):
+                        eid = emp_schedule["employee_id"]
+                        emp_name = emp_schedule.get("employee_name")
+                        traj = fatigue_trajectories.get(eid, [])
+                        for day in emp_schedule.get("days", []):
+                            d_offset = (date.fromisoformat(day["date"]) - request.start_date).days
+                            fs = traj[d_offset] if d_offset < len(traj) else 0.0
+                            if fs >= THRESHOLD_HIGH:
+                                severity = "critical" if fs >= THRESHOLD_CRITICAL else "warning"
+                                shift_info = day.get("shift") or {}
+                                fatigue_alerts.append(FatigueAlert(
+                                    employee_id=eid,
+                                    employee_name=emp_name,
+                                    utc_date=date.fromisoformat(day["date"]),
+                                    fatigue_score=round(fs, 3),
+                                    slot_name=shift_info.get("slot_name"),
+                                    shift_type=shift_info.get("shift_type"),
+                                    severity=severity,
+                                    message=f"Employee {emp_name or eid} has elevated fatigue ({fs:.0%}) on this day.",
+                                ))
             else:
                 solver_status = "solver_failed"
                 warnings.append("CP-SAT solver returned no feasible solution.")
@@ -439,6 +489,7 @@ class OptimizerService:
             solved_schedule=solved_schedule,
             warnings=warnings,
             notes=notes,
+            fatigue_alerts=fatigue_alerts,
         )
 
     def build_absence_impact(
@@ -456,6 +507,26 @@ class OptimizerService:
                 team_profile_config=request.team_profile_config,
             )
         )
+
+        # Compute fatigue for absent employee
+        absentee_fatigue: Optional[float] = None
+        if request.employees:
+            try:
+                scoring_service = FatigueScoringService(system_config=self.load_config())
+                recent_shifts_data: list = []
+                emp_dicts = [e.model_dump() for e in request.employees]
+                traj_map = scoring_service.score_team_fatigue(
+                    employees=emp_dicts,
+                    start_date=request.start_date,
+                    num_days=request.num_days,
+                    recent_shifts=recent_shifts_data,
+                    prefer_model=True,
+                )
+                traj = traj_map.get(request.absence_event.employee_id, [])
+                day_offset = (request.absence_event.start_date - request.start_date).days
+                absentee_fatigue = traj[day_offset] if 0 <= day_offset < len(traj) else None
+            except Exception:
+                absentee_fatigue = None
         shift_minimums = {
             (item.utc_date.isoformat(), item.shift_type): int(
                 item.minimum_headcount or 0
@@ -533,6 +604,10 @@ class OptimizerService:
         else:
             rationale = "All affected assignments still meet minimum slot coverage after removing the absent employee, so replacement is optional."
 
+        # Augment rationale if high fatigue
+        if absentee_fatigue is not None and absentee_fatigue > 0.7:
+            rationale = f"(Fatigue risk elevated at {absentee_fatigue:.0%} — fatigue may be a contributing factor.) " + rationale
+
         return AbsenceImpactResponse(
             employee_id=request.absence_event.employee_id,
             start_date=request.absence_event.start_date,
@@ -553,6 +628,7 @@ class OptimizerService:
                 "Coverage impact is evaluated against current assignments and minimum coverage only.",
                 "Use recommendations to identify safe replacements when coverage becomes critical or fatigue risk increases.",
             ],
+            absentee_fatigue_score=round(absentee_fatigue, 3) if absentee_fatigue is not None else None,
         )
 
     def _write_shifts_to_supabase(

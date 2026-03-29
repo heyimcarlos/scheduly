@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -121,6 +120,7 @@ class EmployeeInput:
     employee_id: int
     region: str
     employee_name: Optional[str] = None
+    timezone: Optional[str] = None  # IANA timezone, e.g. "Asia/Kolkata"
 
 
 @dataclass
@@ -158,6 +158,11 @@ class ScheduleInput:
     overtime_threshold_hours: int = 40
     # Maximum wall-clock seconds allowed per solver pass (None = unlimited)
     time_limit_seconds: Optional[float] = 120.0
+    # Pre-computed fatigue trajectories: employee_id -> [score per day]
+    fatigue_trajectories: Dict[int, List[float]] = field(default_factory=dict)
+    # Fatigue-aware scheduling parameters
+    fatigue_weight: float = 0.0  # Weight of fatigue penalty in objective (0 = disabled)
+    fatigue_threshold: float = 0.6  # Employees above this fatigue are deprioritized for extra shifts
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +241,11 @@ def _merge_inline_team_profile(
         or merged_config.get("raw_data_timezone"),
         "slot_policies": merged_slot_policies,
     }
+
+    # To verify: Add this debug temporarily in solve_scheduling after the merge:
+    logger.info("Merged slot policies: %s", {
+      k: v.get("allowed_regions") for k, v in merged_slot_policies.items()
+    })
 
     profiles[resolved_id] = merged_profile
     merged_config["team_profiles"] = profiles
@@ -888,7 +898,9 @@ def _add_region_eligibility_constraints(
             continue
 
         for e_idx, employee in enumerate(employees):
-            if employee.region in allowed_regions:
+            emp_region_lower = employee.region.lower()
+            allowed_lower = {r.lower() for r in allowed_regions}
+            if emp_region_lower in allowed_lower:
                 continue
 
             for d in range(num_days):
@@ -964,6 +976,49 @@ def _consecutive_off_rewards(
             model.add(pair <= 1 - is_working[(e, d + 1)])
             rewards.append(pair * weight)
     return rewards
+
+
+def _fatigue_penalties(
+    model: cp_model.CpModel,
+    shifts: Dict,
+    is_working: Dict,
+    employees: List[EmployeeInput],
+    fatigue_trajectories: Dict[int, List[float]],
+    slot_occurrences_by_day: Dict[int, Dict[str, dict]],
+    num_days: int,
+    fatigue_weight: float = 0.0,
+    fatigue_threshold: float = 0.6,
+) -> List[cp_model.LinearExpr]:
+    """Add fatigue cost for employees working while already elevated.
+
+    For each (employee, day) where fatigue > fatigue_threshold and they are assigned
+    to a slot, adds a penalty = (fatigue_score - threshold) * fatigue_weight.
+    This discourages the solver from stacking shifts on already-fatigued employees.
+    """
+    if fatigue_weight <= 0 or not fatigue_trajectories:
+        return []
+
+    penalties: List[cp_model.LinearExpr] = []
+
+    for e_idx, emp in enumerate(employees):
+        trajectory = fatigue_trajectories.get(emp.employee_id, [])
+        for d in range(num_days):
+            fatigue_score = trajectory[d] if d < len(trajectory) else 0.0
+            if fatigue_score <= fatigue_threshold:
+                continue
+
+            # This employee is working today and has elevated fatigue
+            # Check if assigned to any slot
+            for slot_name, slot_occ in slot_occurrences_by_day[d].items():
+                key = (e_idx, d, slot_name)
+                if key not in shifts:
+                    continue
+                # Penalize proportional to how far above threshold
+                excess = fatigue_score - fatigue_threshold
+                penalty = excess * fatigue_weight * 10  # scale up for CP-SAT integer solver
+                penalties.append(shifts[key] * int(penalty))
+
+    return penalties
 
 
 # ---------------------------------------------------------------------------
@@ -1186,9 +1241,21 @@ def _run_pass1(
         model, is_working, inp.employees, inp.absences, inp.num_days
     )
 
+    fatigue_pt = _fatigue_penalties(
+        model,
+        shifts,
+        is_working,
+        inp.employees,
+        inp.fatigue_trajectories,
+        slot_occurrences_by_day,
+        inp.num_days,
+        fatigue_weight=inp.fatigue_weight,
+        fatigue_threshold=inp.fatigue_threshold,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
+        + fatigue_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(
@@ -1405,9 +1472,21 @@ def _run_pass2(
         model, is_working, inp.employees, inp.absences, inp.num_days
     )
 
+    fatigue_pt = _fatigue_penalties(
+        model,
+        shifts,
+        is_working,
+        inp.employees,
+        inp.fatigue_trajectories,
+        slot_occurrences_by_day,
+        inp.num_days,
+        fatigue_weight=inp.fatigue_weight,
+        fatigue_threshold=inp.fatigue_threshold,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
+        + fatigue_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(shifts, inp.employees, all_slots, inp.num_days)
@@ -1450,6 +1529,7 @@ def export_schedule_to_json(
     num_days: int,
     team_profile_id: str,
     service_timezone: Optional[str],
+    fatigue_trajectories: Dict[int, List[float]] = {},
 ) -> str:
     """Serialize final schedule to JSON string."""
     schedule_data = {
@@ -1479,12 +1559,34 @@ def export_schedule_to_json(
                 "shift": None,
             }
 
+            # Add per-day fatigue data
+            traj = fatigue_trajectories.get(emp.employee_id, [])
+            day_entry["fatigue_score"] = round(traj[d], 3) if d < len(traj) else 0.0
+            day_entry["cumulative_fatigue"] = round(sum(traj[: d + 1]), 3) if d < len(traj) else 0.0
+
             if day_entry["is_working"]:
                 for slot_name in slot_names:
                     if (e_idx, d, slot_name) in shifts and solver.value(
                         shifts[(e_idx, d, slot_name)]
                     ):
                         info = slot_occurrences_by_day[d][slot_name]
+                        utc_start = info["utc_start_at"]
+                        utc_end = info["utc_end_at"]
+
+                        # Compute per-employee local times from UTC using the employee's
+                        # region timezone (not the service timezone). This ensures that when
+                        # the shift is displayed, the local time matches what the employee
+                        # actually works in their home timezone.
+                        emp_tz = _resolve_zoneinfo(emp.timezone)
+                        if emp_tz is not None:
+                            start_local = utc_start.astimezone(emp_tz)
+                            end_local = utc_end.astimezone(emp_tz)
+                            local_start = start_local.strftime("%H:%M")
+                            local_end = end_local.strftime("%H:%M")
+                        else:
+                            local_start = info.get("local_start_time")
+                            local_end = info.get("local_end_time")
+
                         day_entry["shift"] = {
                             "slot_name": slot_name,
                             "shift_type": info["shift_type"],
@@ -1492,10 +1594,10 @@ def export_schedule_to_json(
                             "coverage_role": info.get("coverage_role"),
                             "utc_start": info["utc_start"],
                             "utc_end": info["utc_end"],
-                            "utc_start_at": info["utc_start_at"].isoformat(),
-                            "utc_end_at": info["utc_end_at"].isoformat(),
-                            "local_start_time": info.get("local_start_time"),
-                            "local_end_time": info.get("local_end_time"),
+                            "utc_start_at": utc_start.isoformat(),
+                            "utc_end_at": utc_end.isoformat(),
+                            "local_start_time": local_start,
+                            "local_end_time": local_end,
                             "canonical": info["canonical"],
                         }
                         break
@@ -1665,6 +1767,7 @@ def solve_scheduling(inp: ScheduleInput) -> Optional[str]:
     #     effective_inp.num_days,
     # )
 
+
     return export_schedule_to_json(
         final_solver,
         final_shifts,
@@ -1676,6 +1779,7 @@ def solve_scheduling(inp: ScheduleInput) -> Optional[str]:
         effective_inp.num_days,
         resolved_profile_id,
         service_timezone,
+        fatigue_trajectories=inp.fatigue_trajectories,
     )
 
 
