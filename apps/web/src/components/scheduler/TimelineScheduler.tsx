@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { addDays, format, startOfWeek, isToday, getDay } from "date-fns";
+import { addDays, format, startOfWeek, isToday, getDay, parseISO } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import {
   ChevronLeft,
@@ -18,15 +18,24 @@ import { cn } from "@/lib/utils";
 import { FatigueRing } from "./FatigueRing";
 import { CoverageRulesModal } from "./CoverageRulesModal";
 import { RecommendationSheet } from "./RecommendationSheet";
-import { useTeamMembers, useShifts, useCreateShift } from "@/hooks/useSchedulerData";
+import { DayDetailSheet } from "./DayDetailSheet";
+import { ShiftFormModal, ShiftFormData } from "./ShiftFormModal";
+import {
+  useTeamMembers,
+  useShifts,
+  useCreateShift,
+  useUpdateShift,
+  useDeleteShift,
+} from "@/hooks/useSchedulerData";
 import { useEmergencyRecommendations } from "@/hooks/useEmergencyRecommendations";
 import { useAbsenceImpact } from "@/hooks/useAbsenceImpact";
 import { ReplacementRecommendation } from "@/lib/api";
-import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift } from "@/types/scheduler";
+import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift, Timezone } from "@/types/scheduler";
 import { useRedistribute } from "@/hooks/useRedistribute";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
 import { WorkloadTemplatePoint } from "@/types/teamProfile";
 import { toast } from "sonner";
+import { zonedLocalTimeToUtc } from "@/lib/timezone";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -124,12 +133,24 @@ export function TimelineScheduler() {
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [recommendationsOpen, setRecommendationsOpen] = useState(false);
 
+  // Day detail panel
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [dayPanelOpen, setDayPanelOpen] = useState(false);
+
+  // Shift form modal
+  const [shiftModalOpen, setShiftModalOpen] = useState(false);
+  const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [defaultDate, setDefaultDate] = useState<Date | undefined>();
+  const [defaultHour, setDefaultHour] = useState<number | undefined>();
+
   const spanNum = Number(viewSpan);
 
   // ── Real data ──────────────────────────────────────────────────────────────
   const { data: teamMembers = [], isLoading: loadingMembers } = useTeamMembers();
   const { data: allShifts = [], isLoading: loadingShifts } = useShifts();
   const createShift = useCreateShift();
+  const updateShift = useUpdateShift();
+  const deleteShift = useDeleteShift();
   const redistribute = useRedistribute();
   const recommendations = useEmergencyRecommendations();
   const absenceImpact = useAbsenceImpact();
@@ -386,6 +407,80 @@ export function TimelineScheduler() {
     [createShift, selectedShift, teamMembers],
   );
 
+  // ── Day detail panel ─────────────────────────────────────────────────────
+  const scheduleTz = activeTeamProfileConfig?.service_timezone ?? "UTC";
+  const [selectedTimezone] = useState<Timezone>(
+    () => (activeTeamProfileConfig?.service_timezone as Timezone) ?? "UTC",
+  );
+
+  const handleDayClick = useCallback((day: Date) => {
+    setSelectedDay(day);
+    setDayPanelOpen(true);
+  }, []);
+
+  const handleShiftClick = useCallback((shift: Shift) => {
+    setEditingShift(shift);
+    setDefaultDate(undefined);
+    setDefaultHour(undefined);
+    setShiftModalOpen(true);
+  }, []);
+
+  const handleEmptySlotClick = useCallback((hour: number) => {
+    setEditingShift(null);
+    setDefaultDate(selectedDay ?? undefined);
+    setDefaultHour(hour);
+    setShiftModalOpen(true);
+  }, [selectedDay]);
+
+  const handleShiftSave = useCallback(
+    (data: ShiftFormData, shiftId?: string) => {
+      const [startHour, startMinute] = data.startTime.split(":").map(Number);
+      const [endHour, endMinute] = data.endTime.split(":").map(Number);
+      const startMinutes = startHour * 60 + startMinute;
+      const endMinutes = endHour * 60 + endMinute;
+      const endDate =
+        endMinutes <= startMinutes
+          ? format(addDays(parseISO(data.date), 1), "yyyy-MM-dd")
+          : data.date;
+
+      const startTime = zonedLocalTimeToUtc(data.date, startHour, startMinute, scheduleTz);
+      const endTime = zonedLocalTimeToUtc(endDate, endHour, endMinute, scheduleTz);
+
+      if (shiftId) {
+        const existing = allShifts.find((s) => s.id === shiftId);
+        if (!existing) return;
+        updateShift.mutate({
+          ...existing,
+          memberId: data.memberId,
+          startTime,
+          endTime,
+          shiftType: data.shiftType,
+          title: data.title || undefined,
+        });
+        toast.success("Shift updated");
+      } else {
+        createShift.mutate({
+          memberId: data.memberId,
+          teamProfileId: activeTeamProfile!.id,
+          startTime,
+          endTime,
+          shiftType: data.shiftType,
+          title: data.title || undefined,
+        });
+        toast.success("Shift created");
+      }
+    },
+    [allShifts, updateShift, scheduleTz, createShift, activeTeamProfile],
+  );
+
+  const handleShiftDelete = useCallback(
+    (shiftId: string) => {
+      deleteShift.mutate(shiftId);
+      toast.success("Shift deleted");
+    },
+    [deleteShift],
+  );
+
   const isCompact = spanNum >= 14;
   const isUltraCompact = spanNum >= 28;
 
@@ -412,6 +507,17 @@ export function TimelineScheduler() {
         isLoading={absenceImpact.isPending || recommendations.isPending}
         error={absenceImpact.error?.message ?? recommendations.error?.message ?? null}
         onApply={handleApplyRecommendation}
+      />
+
+      <DayDetailSheet
+        open={dayPanelOpen}
+        onOpenChange={setDayPanelOpen}
+        selectedDay={selectedDay}
+        allShifts={allShifts}
+        teamMembers={teamMembers}
+        scheduleTz={scheduleTz}
+        onShiftClick={handleShiftClick}
+        onEmptySlotClick={handleEmptySlotClick}
       />
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
@@ -574,9 +680,10 @@ export function TimelineScheduler() {
                 {days.map((day, i) => (
                   <div
                     key={day.toISOString()}
+                    onClick={() => handleDayClick(day)}
                     className={`flex items-center justify-center text-xs font-medium border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
                       isToday(day) ? "bg-primary/10 text-primary" : "text-muted-foreground"
-                    }`}
+                    } cursor-pointer hover:bg-muted/50 transition-colors`}
                   >
                     {format(day, dateFormat)}
                   </div>
@@ -597,6 +704,7 @@ export function TimelineScheduler() {
                     return (
                       <div
                         key={day.toISOString()}
+                        onClick={() => handleDayClick(day)}
                         className={`flex items-center justify-center min-w-0 overflow-hidden ${isCompact ? "px-0" : "px-1"} border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
                           isToday(day) ? "bg-primary/5" : ""
                         }`}
@@ -624,7 +732,10 @@ export function TimelineScheduler() {
                                 >
                                   <button
                                     type="button"
-                                    onClick={() => handleRecommendationRequest(shift)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleRecommendationRequest(shift);
+                                    }}
                                     className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100"
                                     aria-label="Get coverage recommendations"
                                   >
@@ -662,6 +773,18 @@ export function TimelineScheduler() {
           </div>
         </div>
       )}
+
+      <ShiftFormModal
+        open={shiftModalOpen}
+        onOpenChange={setShiftModalOpen}
+        teamMembers={teamMembers}
+        selectedTimezone={selectedTimezone}
+        editingShift={editingShift}
+        defaultDate={defaultDate}
+        defaultHour={defaultHour}
+        onSave={handleShiftSave}
+        onDelete={handleShiftDelete}
+      />
     </div>
   );
 }

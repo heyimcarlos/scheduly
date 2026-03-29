@@ -2,7 +2,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { NavLink } from '@/components/NavLink';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
-import { CalendarDays, Users, LogOut, FileText, RotateCcw } from 'lucide-react';
+import { CalendarDays, Calendar, Users, LogOut, FileText, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useQuery } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import logo from '@/assets/logo.png';
 
 const navItems = [
   { to: '/manager', icon: CalendarDays, label: 'Schedule' },
+  { to: '/manager/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/manager/employees', icon: Users, label: 'Employees' },
   { to: '/manager/requests', icon: FileText, label: 'Requests', badgeKey: 'requests' as const },
 ];
