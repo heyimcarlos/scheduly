@@ -37,6 +37,7 @@ function mapShift(row: any): Shift {
     isEfficient: row.is_efficient,
     title: row.title ?? undefined,
     shiftType: row.shift_type as ShiftType,
+    slotName: row.slot_name ?? undefined,
     hasRestViolation: row.has_rest_violation ?? undefined,
   };
 }
