@@ -3,7 +3,7 @@ import { ApprovedTimeOff, getRequestTypeStyle } from '@/hooks/useApprovedTimeOff
 import { ShiftViolation } from '@/hooks/useCoverageViolations';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Check, GripVertical, Shield, AlertTriangle, Clock, CalendarOff, TimerOff } from 'lucide-react';
+import { Check, GripVertical, Shield, AlertTriangle, Clock, CalendarOff, TimerOff, Sun, Moon, Sunset, Wifi } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -11,9 +11,17 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
+const FAMILY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  Morning: Sun,
+  Evening: Sunset,
+  Night: Moon,
+  Hybrid: Wifi,
+};
+
 interface ShiftCardProps {
   shift: Shift;
   member: TeamMember;
+  family?: string;
   style?: React.CSSProperties;
   isDragging?: boolean;
   approvedTimeOff?: ApprovedTimeOff;
@@ -23,10 +31,11 @@ interface ShiftCardProps {
   onClick?: () => void;
 }
 
-export function ShiftCard({ 
-  shift, 
-  member, 
-  style, 
+export function ShiftCard({
+  shift,
+  member,
+  family,
+  style,
   isDragging,
   approvedTimeOff,
   violation,
@@ -137,6 +146,21 @@ export function ShiftCard({
             </div>
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+            {family && FAMILY_ICONS[family] && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center justify-center">
+                    {(() => {
+                      const Icon = FAMILY_ICONS[family];
+                      return <Icon className="w-2.5 h-2.5" />;
+                    })()}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {family} shift
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Clock className="w-2.5 h-2.5" />
             {format(shift.startTime, 'HH:mm')} - {format(shift.endTime, 'HH:mm')}
           </div>

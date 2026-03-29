@@ -4,6 +4,24 @@ import { ShiftViolation, ViolationMap } from '@/hooks/useCoverageViolations';
 
 const GROUP_THRESHOLD = 3;
 
+/**
+ * Extracts the shift family name from a slot name.
+ * Morning1/Morning2/Morning3 → "Morning"
+ * Evening1/Evening2 → "Evening"
+ * Night1 → "Night"
+ * Hybrid1 → "Hybrid"
+ * Falls back to "Other" for unknown slot names.
+ */
+export function getShiftFamily(slotName: string | undefined): string {
+  if (!slotName) return 'Other';
+  const lower = slotName.toLowerCase();
+  if (lower.includes('morning')) return 'Morning';
+  if (lower.includes('evening')) return 'Evening';
+  if (lower.includes('night')) return 'Night';
+  if (lower.includes('hybrid')) return 'Hybrid';
+  return 'Other';
+}
+
 export interface PositionedDayShift {
   shift: Shift;
   member: TeamMember;
@@ -23,6 +41,7 @@ export type CalendarRenderItem =
     end: number;
     shift: Shift;
     member: TeamMember;
+    family?: string; // 'Morning' | 'Evening' | 'Night' | 'Hybrid' | 'Other'
     approvedTimeOff?: ApprovedTimeOff;
     violation?: ShiftViolation;
     columnIndex: number;
@@ -36,6 +55,7 @@ export type CalendarRenderItem =
     end: number;
     shifts: Shift[];
     members: TeamMember[];
+    family?: string; // 'Morning' | 'Evening' | 'Night' | 'Hybrid' | 'Other'
     columnIndex: number;
     columnCount: number;
   };
@@ -97,6 +117,9 @@ export function buildCalendarRenderItems(
   const renderItems: CalendarRenderItem[] = [];
 
   for (const slotItems of groupedBySlot.values()) {
+    // Compute family for this group (all items share the same slot, so same family)
+    const family = getShiftFamily(slotItems[0].shift.slotName);
+
     if (slotItems.length >= GROUP_THRESHOLD) {
       renderItems.push({
         kind: 'grouped',
@@ -106,6 +129,7 @@ export function buildCalendarRenderItems(
         end: slotItems[0].end,
         shifts: slotItems.map((item) => item.shift),
         members: slotItems.map((item) => item.member),
+        family,
         columnIndex: 0,
         columnCount: 1,
       });
@@ -121,6 +145,7 @@ export function buildCalendarRenderItems(
         end: item.end,
         shift: item.shift,
         member: item.member,
+        family,
         approvedTimeOff: item.approvedTimeOff,
         violation: item.violation,
         columnIndex: 0,
