@@ -21,6 +21,7 @@ import {
   useUpdateShift,
   useDeleteSuggestion,
   useDeleteShift,
+  useCreateShift,
 } from "@/hooks/useSchedulerData";
 import { useApprovedTimeOff } from "@/hooks/useApprovedTimeOff";
 import { useCoverageViolations } from "@/hooks/useCoverageViolations";
@@ -60,6 +61,7 @@ export function SchedulerLayout() {
   const updateShift = useUpdateShift();
   const deleteSuggestion = useDeleteSuggestion();
   const deleteShift = useDeleteShift();
+  const createShift = useCreateShift();
 
   // Local shift overrides for optimistic UI
   const [localShifts, setLocalShifts] = useState<Shift[] | null>(null);
@@ -296,6 +298,7 @@ export function SchedulerLayout() {
         // Create new
         createShift.mutate({
           memberId: data.memberId,
+          teamProfileId: activeTeamProfile!.id,
           startTime,
           endTime,
           shiftType: data.shiftType,
