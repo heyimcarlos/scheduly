@@ -10,7 +10,8 @@ from typing import Sequence
 
 from dotenv import load_dotenv
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -21,7 +22,7 @@ if not api_key:
         "Please set it before running this script."
     )
 
-genai.configure(api_key=api_key)
+_client = genai.Client(api_key=api_key)
 
 MODEL_NAME = os.getenv("MODEL_NAME")
 if not MODEL_NAME:
@@ -305,7 +306,7 @@ def fuzzy_match_employee(
 
 def parse_manager_note(
     note: str,
-    model: genai.GenerativeModel | None = None,
+    model: None = None,
     today_override: str | None = None,
     employee_roster: Sequence[str] | None = None,
 ) -> dict:
@@ -313,7 +314,7 @@ def parse_manager_note(
 
     Args:
         note: The free-text manager note.
-        model: Optional pre-configured GenerativeModel (for testing).
+        model: Unused, kept for backwards compatibility.
         today_override: Optional date string to override today's date
                         (for deterministic testing).
         employee_roster: Optional list of known employee names for fuzzy matching.
@@ -328,19 +329,15 @@ def parse_manager_note(
 
     prompt = SYSTEM_PROMPT.format(today=today)
 
-    if model is None:
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=prompt,
-        )
-
     # Retry loop for transient API errors
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = model.generate_content(
-                note,
-                generation_config=genai.GenerationConfig(
+            response = _client.models.generate_content(
+                model=MODEL_NAME,
+                contents=note,
+                config=types.GenerateContentConfig(
+                    system_instruction=prompt,
                     temperature=0.1,
                     response_mime_type="application/json",
                 ),

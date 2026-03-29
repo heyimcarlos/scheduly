@@ -209,57 +209,34 @@ async def parse_manager_note(request: ParseNoteRequest) -> ParseNoteResponse:
     Uses an LLM (Gemini) to extract scheduling information from free-text notes,
     including sick leave, time off, shift swaps, late arrivals, and coverage requests.
     """
-    import subprocess
     import sys
     from pathlib import Path
 
     note_parser_path = Path(__file__).resolve().parents[4] / "packages" / "note_parser"
-    venv_python = (
-        note_parser_path / ".venv" / "Scripts" / "python.exe"
-        if sys.platform == "win32"
-        else note_parser_path / ".venv" / "bin" / "python"
-    )
-    run_script = note_parser_path / "run_parse.py"
-
-    if not venv_python.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Note parser environment not found. Run 'uv sync' in packages/note_parser.",
-        )
-
-    payload = json.dumps({
-        "note": request.note,
-        "today_override": request.today_override,
-        "employee_roster": request.employee_roster,
-    })
+    if str(note_parser_path) not in sys.path:
+        sys.path.insert(0, str(note_parser_path))
 
     try:
-        proc = subprocess.run(
-            [str(venv_python), str(run_script)],
-            input=payload,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Note parser timed out.")
-    except Exception as exc:
-        _logger.exception("Failed to launch note parser subprocess")
-        raise HTTPException(status_code=500, detail=f"Failed to launch note parser: {exc}") from exc
-
-    if proc.returncode != 0:
-        _logger.error("Note parser subprocess error: %s", proc.stderr)
+        from note_parser_module import parse_manager_note as parse_note
+    except ImportError as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Note parser error: {proc.stderr.strip()}",
-        )
-
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Note parser returned invalid JSON: {exc}",
+            detail=f"Note parser module not available: {exc}",
         ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Note parser configuration error: {exc}",
+        ) from exc
+
+    try:
+        result = parse_note(
+            note=request.note,
+            today_override=request.today_override,
+            employee_roster=request.employee_roster,
+        )
+    except Exception as exc:
+        _logger.exception("Failed to parse manager note")
+        raise HTTPException(status_code=500, detail=f"Failed to parse note: {exc}") from exc
 
     return ParseNoteResponse(**result)
