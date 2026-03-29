@@ -20,6 +20,7 @@ function mapTeamMember(row: any): TeamMember {
     maxHours: row.max_hours,
     timezone: row.timezone as Timezone,
     email: row.email ?? undefined,
+    teamProfileId: row.team_profile_id,
   };
 }
 
@@ -27,6 +28,7 @@ function mapShift(row: any): Shift {
   return {
     id: row.id,
     memberId: row.member_id,
+    teamProfileId: row.team_profile_id,
     startTime: new Date(row.start_time),
     endTime: new Date(row.end_time),
     isPending: row.is_pending,
@@ -138,6 +140,7 @@ export function useUpsertTeamMember() {
         max_hours: member.maxHours,
         timezone: member.timezone,
         email: member.email ?? null,
+        team_profile_id: member.teamProfileId,
       };
       const { error } = await supabase.from('team_members').upsert(row);
       if (error) throw error;
@@ -192,9 +195,10 @@ export function useDeleteSuggestion() {
 export function useCreateShift() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (shift: { memberId: string; startTime: Date; endTime: Date; shiftType: string; title?: string }) => {
+    mutationFn: async (shift: { memberId: string; teamProfileId: string; startTime: Date; endTime: Date; shiftType: string; title?: string }) => {
       const { error } = await supabase.from('shifts').insert({
         member_id: shift.memberId,
+        team_profile_id: shift.teamProfileId,
         start_time: shift.startTime.toISOString(),
         end_time: shift.endTime.toISOString(),
         shift_type: shift.shiftType,
@@ -208,6 +212,7 @@ export function useCreateShift() {
 
 export interface CreateShiftInput {
   memberId: string;
+  teamProfileId: string;
   startTime: Date;
   endTime: Date;
   shiftType: string;
@@ -221,6 +226,7 @@ export async function createShiftsBulk(shifts: CreateShiftInput[]) {
 
   const rows = shifts.map((shift) => ({
     member_id: shift.memberId,
+    team_profile_id: shift.teamProfileId,
     start_time: shift.startTime.toISOString(),
     end_time: shift.endTime.toISOString(),
     shift_type: shift.shiftType,
@@ -259,6 +265,7 @@ export function useBulkUpsertTeamMembers() {
         max_hours: member.maxHours,
         timezone: member.timezone,
         email: member.email ?? null,
+        team_profile_id: member.teamProfileId,
       }));
       const { error } = await supabase.from('team_members').upsert(rows);
       if (error) throw error;

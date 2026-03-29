@@ -131,6 +131,10 @@ export function useRedistribute(): UseRedistributeReturn {
       schedule: SolvedSchedule;
       memberIdsByEmployeeId: Record<number, string>;
     }) => {
+      const teamProfileId = activeTeamProfile?.id;
+      if (!teamProfileId) {
+        throw new Error('No active team profile');
+      }
       const shiftsToCreate: CreateShiftInput[] = [];
 
       for (const staffRow of schedule.staff_schedules) {
@@ -141,6 +145,7 @@ export function useRedistribute(): UseRedistributeReturn {
           if (!dayEntry.shift) continue;
           shiftsToCreate.push({
             memberId,
+            teamProfileId,
             startTime: new Date(dayEntry.shift.utc_start_at),
             endTime: new Date(dayEntry.shift.utc_end_at),
             shiftType: 'regular',

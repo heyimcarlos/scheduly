@@ -374,6 +374,7 @@ export function TimelineScheduler() {
 
       createShift.mutate({
         memberId: replacementMember.id,
+        teamProfileId: replacementMember.teamProfileId,
         startTime: selectedShift.startTime,
         endTime: selectedShift.endTime,
         shiftType: selectedShift.shiftType,

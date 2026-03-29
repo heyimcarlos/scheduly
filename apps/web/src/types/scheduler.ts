@@ -71,11 +71,13 @@ export interface TeamMember {
   maxHours: number;
   timezone: Timezone;
   email?: string;
+  teamProfileId: string;
 }
 
 export interface Shift {
   id: string;
   memberId: string;
+  teamProfileId: string;
   startTime: Date;
   endTime: Date;
   isPending: boolean; // Ghost shift
