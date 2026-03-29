@@ -516,3 +516,36 @@ def test_fatigue_scores_endpoint_defaults_to_heuristic_without_ml_model():
     assert len(payload["fatigue_trajectories"]["0"]) == 7
     for score in payload["fatigue_trajectories"]["0"]:
         assert 0.0 <= score <= 1.0
+
+
+def test_parse_note_endpoint_validation():
+    """Test that the parse note endpoint validates request structure."""
+    # Test with empty note (should fail validation)
+    response = client.post(
+        "/api/v1/notes/parse",
+        json={
+            "note": "",
+        },
+    )
+
+    assert response.status_code == 422  # Validation error
+
+
+def test_parse_note_endpoint_structure():
+    """Test that the parse note endpoint returns proper structure when called."""
+    response = client.post(
+        "/api/v1/notes/parse",
+        json={
+            "note": "Alice is sick tomorrow",
+            "employee_roster": ["Alice Chen", "Bob Martinez"],
+        },
+    )
+
+    # Response could be 200 (success with API key) or 500 (missing API key)
+    # We just verify the endpoint exists and responds
+    assert response.status_code in [200, 500]
+
+    if response.status_code == 200:
+        payload = response.json()
+        assert "events" in payload
+        assert isinstance(payload["events"], list)

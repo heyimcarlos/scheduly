@@ -246,6 +246,27 @@ export interface ScheduleJobResponse {
   updated_at: string;
 }
 
+export interface SchedulingEvent {
+  type: 'sick_leave' | 'time_off' | 'swap' | 'late_arrival' | 'early_departure' | 'coverage_request' | null;
+  employee: string | null;
+  affected_dates: string[];
+  affected_shifts: ('day' | 'evening' | 'night')[] | null;
+  swap_target: string | null;
+  notes: string;
+  urgency: 'immediate' | 'planned' | 'unknown';
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface ParseNoteRequest {
+  note: string;
+  employee_roster?: string[];
+  today_override?: string;
+}
+
+export interface ParseNoteResponse {
+  events: SchedulingEvent[];
+}
+
 // ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
@@ -319,3 +340,17 @@ export async function analyzeAbsenceImpact(
 }
 
 
+
+/**
+ * POST /notes/parse
+ *
+ * Parse a natural language manager note into structured scheduling events.
+ */
+export async function parseManagerNote(
+  request: ParseNoteRequest,
+): Promise<ParseNoteResponse> {
+  return apiFetch<ParseNoteResponse>('/notes/parse', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}

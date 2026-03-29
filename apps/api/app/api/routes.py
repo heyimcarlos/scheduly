@@ -17,6 +17,8 @@ from app.models.schemas import (
     EmergencyRecommendationResponse,
     FatigueScoresRequest,
     FatigueScoresResponse,
+    ParseNoteRequest,
+    ParseNoteResponse,
     PlanningValidationResponse,
     ScheduleJobResponse,
     SchedulePlanResponse,
@@ -197,3 +199,51 @@ async def compute_fatigue_scores(
         num_days=request.num_days,
         fatigue_trajectories=trajectories,
     )
+
+
+@router.post("/notes/parse", response_model=ParseNoteResponse)
+async def parse_manager_note(request: ParseNoteRequest) -> ParseNoteResponse:
+    """
+    Parse a natural language manager note into structured scheduling events.
+
+    Uses an LLM (Gemini) to extract scheduling information from free-text notes,
+    including sick leave, time off, shift swaps, late arrivals, and coverage requests.
+    """
+    try:
+        # Import lazily to avoid requiring GEMINI_API_KEY if not using this endpoint
+        import sys
+        from pathlib import Path
+
+        # Add the note_parser package to the Python path
+        note_parser_path = Path(__file__).parent.parent.parent.parent.parent / "packages" / "note_parser"
+        if str(note_parser_path) not in sys.path:
+            sys.path.insert(0, str(note_parser_path))
+
+        from note_parser_module import parse_manager_note as parse_note
+
+        result = parse_note(
+            note=request.note,
+            model=None,  # Will use default model from environment
+            today_override=request.today_override,
+            employee_roster=request.employee_roster,
+        )
+
+        return ParseNoteResponse(**result)
+
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Note parser module not available: {exc}"
+        ) from exc
+    except RuntimeError as exc:
+        # Catch missing API key or model name errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"Note parser configuration error: {exc}"
+        ) from exc
+    except Exception as exc:
+        _logger.exception("Failed to parse manager note")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse note: {exc}"
+        ) from exc

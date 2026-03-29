@@ -518,3 +518,39 @@ class ScheduleJobResponse(BaseModel):
     error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+
+class SchedulingEvent(BaseModel):
+    """A single scheduling event parsed from a manager's note."""
+
+    type: Optional[Literal["sick_leave", "time_off", "swap", "late_arrival", "early_departure", "coverage_request"]] = None
+    employee: Optional[str] = None
+    affected_dates: List[str] = Field(default_factory=list)
+    affected_shifts: Optional[List[Literal["day", "evening", "night"]]] = None
+    swap_target: Optional[str] = None
+    notes: str = ""
+    urgency: Literal["immediate", "planned", "unknown"] = "unknown"
+    confidence: Literal["high", "medium", "low"] = "medium"
+
+
+class ParseNoteRequest(BaseModel):
+    """Request model for parsing manager notes."""
+
+    note: str = Field(..., min_length=1, description="The manager's note to parse")
+    employee_roster: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of known employee names for fuzzy matching"
+    )
+    today_override: Optional[str] = Field(
+        default=None,
+        description="Optional date string to override today's date (for testing)"
+    )
+
+
+class ParseNoteResponse(BaseModel):
+    """Response model for parsed manager notes."""
+
+    events: List[SchedulingEvent] = Field(
+        default_factory=list,
+        description="List of parsed scheduling events"
+    )
