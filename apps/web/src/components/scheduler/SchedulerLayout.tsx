@@ -190,9 +190,7 @@ export function SchedulerLayout() {
     [dbShifts, deleteSuggestion],
   );
 
-  const handleProcessNotes = useCallback((notes: string) => {
-    toast.success("Notes processed");
-  }, []);
+  const handleProcessNotes = useCallback((_notes: string) => {}, []);
 
   const handleShiftMove = useCallback(
     (shiftId: string, newStart: Date, newEnd: Date): boolean => {

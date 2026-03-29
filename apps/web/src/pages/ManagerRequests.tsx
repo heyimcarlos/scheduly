@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Check, X, Clock, CalendarOff, ArrowLeftRight, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { NoteParser } from '@/components/scheduler/NoteParser';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
@@ -204,6 +205,7 @@ export default function ManagerRequests() {
               Pending {pending.length > 0 && `(${pending.length})`}
             </TabsTrigger>
             <TabsTrigger value="resolved">Resolved</TabsTrigger>
+            <TabsTrigger value="quick-entry">Quick Entry</TabsTrigger>
           </TabsList>
           <TabsContent value="pending" className="mt-4">
             {isLoading ? (
@@ -220,6 +222,16 @@ export default function ManagerRequests() {
             ) : (
               resolved.map((r: any) => renderRequest(r, false))
             )}
+          </TabsContent>
+          <TabsContent value="quick-entry" className="mt-4">
+            <NoteParser
+              onEventsProcessed={(events) => {
+                toast({
+                  title: 'Events parsed successfully',
+                  description: `Extracted ${events.length} scheduling event(s) from your note.`,
+                });
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

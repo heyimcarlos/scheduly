@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -10,7 +11,8 @@ from typing import Sequence
 
 from dotenv import load_dotenv
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -21,7 +23,7 @@ if not api_key:
         "Please set it before running this script."
     )
 
-genai.configure(api_key=api_key)
+_client = genai.Client(api_key=api_key)
 
 MODEL_NAME = os.getenv("MODEL_NAME")
 if not MODEL_NAME:
@@ -57,6 +59,12 @@ REQUIRED_EVENT_FIELDS = {
 # Maximum retries on transient API errors
 MAX_RETRIES = 2
 RETRY_DELAY_SECONDS = 1.0
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Return True for 429/quota errors that should not be retried immediately."""
+    msg = str(exc)
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower()
 
 SYSTEM_PROMPT = """You are a scheduling assistant for a 24/7 Security Operations Center (SOC).
 Your job is to parse natural language notes from a manager into structured JSON scheduling events.
@@ -305,7 +313,7 @@ def fuzzy_match_employee(
 
 def parse_manager_note(
     note: str,
-    model: genai.GenerativeModel | None = None,
+    model: None = None,
     today_override: str | None = None,
     employee_roster: Sequence[str] | None = None,
 ) -> dict:
@@ -313,7 +321,7 @@ def parse_manager_note(
 
     Args:
         note: The free-text manager note.
-        model: Optional pre-configured GenerativeModel (for testing).
+        model: Unused, kept for backwards compatibility.
         today_override: Optional date string to override today's date
                         (for deterministic testing).
         employee_roster: Optional list of known employee names for fuzzy matching.
@@ -328,19 +336,15 @@ def parse_manager_note(
 
     prompt = SYSTEM_PROMPT.format(today=today)
 
-    if model is None:
-        model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
-            system_instruction=prompt,
-        )
-
-    # Retry loop for transient API errors
+    # Retry loop for transient API errors (skips retry on rate limit)
     last_error = None
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = model.generate_content(
-                note,
-                generation_config=genai.GenerationConfig(
+            response = _client.models.generate_content(
+                model=MODEL_NAME,
+                contents=note,
+                config=types.GenerateContentConfig(
+                    system_instruction=prompt,
                     temperature=0.1,
                     response_mime_type="application/json",
                 ),
@@ -348,6 +352,8 @@ def parse_manager_note(
             break
         except Exception as e:
             last_error = e
+            if _is_rate_limit_error(e):
+                return _make_fallback_event(f"Rate limit exceeded: {e}")
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_SECONDS)
             continue
@@ -362,4 +368,48 @@ def parse_manager_note(
         return _make_fallback_event(f"Failed to parse response ({e}): {raw}")
 
     # Validate, sanitize, fuzzy-match, flag conflicts
+    return _validate_events(parsed, roster=employee_roster)
+
+
+async def parse_manager_note_async(
+    note: str,
+    today_override: str | None = None,
+    employee_roster: Sequence[str] | None = None,
+) -> dict:
+    """Async version of parse_manager_note using the async genai client."""
+    if not note or not note.strip():
+        return _make_fallback_event("Empty note provided")
+
+    today = today_override or datetime.now().strftime("%Y-%m-%d (%A)")
+    prompt = SYSTEM_PROMPT.format(today=today)
+
+    last_error = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = await _client.aio.models.generate_content(
+                model=MODEL_NAME,
+                contents=note,
+                config=types.GenerateContentConfig(
+                    system_instruction=prompt,
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                ),
+            )
+            break
+        except Exception as e:
+            last_error = e
+            if _is_rate_limit_error(e):
+                return _make_fallback_event(f"Rate limit exceeded: {e}")
+            if attempt < MAX_RETRIES:
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+            continue
+    else:
+        return _make_fallback_event(f"API error after {MAX_RETRIES + 1} attempts: {last_error}")
+
+    try:
+        parsed = json.loads(response.text)
+    except (json.JSONDecodeError, ValueError, AttributeError, TypeError) as e:
+        raw = getattr(response, "text", "<no text>")
+        return _make_fallback_event(f"Failed to parse response ({e}): {raw}")
+
     return _validate_events(parsed, roster=employee_roster)
