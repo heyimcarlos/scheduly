@@ -15,8 +15,6 @@ from app.models.schemas import (
     DemandPlanResponse,
     EmergencyRecommendationRequest,
     EmergencyRecommendationResponse,
-    LocalToUtcRequest,
-    LocalToUtcResponse,
     PlanningValidationResponse,
     ScheduleJobResponse,
     SchedulePlanResponse,
@@ -164,43 +162,3 @@ async def check_schedule_health() -> dict:
         "async_jobs": "in-memory-job-store",
         "status": "explicit-workload-product-path",
     }
-
-
-@router.post("/utils/local-to-utc", response_model=LocalToUtcResponse)
-async def local_to_utc(request: LocalToUtcRequest) -> LocalToUtcResponse:
-    """
-    Convert local HH:mm times to UTC HH:mm given a service timezone.
-
-    Handles both regular overnight shifts (where shifts by the service timezone.
-    The `overnight` flag should be set to True when the shift crosses midnight
-    in the local timezone (e.g., 21:00-05:00).
-    """
-    from datetime import datetime, timezone as dt_tz
-    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-    try:
-        tz = ZoneInfo(request.service_timezone)
-    except ZoneInfoNotFoundError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown timezone: {request.service_timezone}",
-        )
-
-    # Use 2026-01-01 as reference date. For overnight shifts the end
-    # time is on the next calendar day.
-    start_hour, start_min = map(int, request.local_start.split(":"))
-    end_hour, end_min = map(int, request.local_end.split(":"))
-
-    start_local = datetime(2026, 1, 1, start_hour, start_min, tzinfo=tz)
-    end_local = datetime(
-        2026, 1, 1 + (1 if request.overnight else 0),
-        end_hour, end_min, tzinfo=tz,
-    )
-
-    start_utc = start_local.astimezone(dt_tz.utc)
-    end_utc = end_local.astimezone(dt_tz.utc)
-
-    return LocalToUtcResponse(
-        utc_start=start_utc.strftime("%H:%M"),
-        utc_end=end_utc.strftime("%H:%M"),
-    )

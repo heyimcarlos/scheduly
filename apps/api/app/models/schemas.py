@@ -505,19 +505,3 @@ class ScheduleJobResponse(BaseModel):
     error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-
-class LocalToUtcRequest(BaseModel):
-    """Convert local HH:mm times to UTC HH:mm given a service timezone."""
-
-    local_start: str  # "HH:mm"
-    local_end: str  # "HH:mm"
-    service_timezone: str  # IANA timezone, e.g. "America/Toronto"
-    overnight: bool = False  # True if end time is on the next calendar day
-
-
-class LocalToUtcResponse(BaseModel):
-    """UTC times computed from local times and timezone."""
-
-    utc_start: str  # "HH:mm"
-    utc_end: str  # "HH:mm"
