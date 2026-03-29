@@ -9,3 +9,8 @@ dist-ssr
 .cache
 server/dist
 public/dist
+.venv
+# Catch pycache in any directory level
+**/__pycache__/
+*.py[cod]
+__pycache__/
