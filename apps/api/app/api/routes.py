@@ -29,6 +29,19 @@ from app.services.fatigue_scoring import FatigueScoringService
 from app.services.job_store import JobStore, get_job_store
 from app.services.optimizer import OptimizerService
 
+# Note parser — imported once at startup to avoid per-request overhead
+try:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _note_parser_path = str(_Path(__file__).resolve().parents[4] / "packages" / "note_parser")
+    if _note_parser_path not in _sys.path:
+        _sys.path.insert(0, _note_parser_path)
+    from note_parser_module import parse_manager_note_async as _parse_note_async
+    _NOTE_PARSER_AVAILABLE = True
+except Exception as _note_parser_exc:
+    _NOTE_PARSER_AVAILABLE = False
+    _note_parser_exc_msg = str(_note_parser_exc)
+
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 
@@ -209,28 +222,14 @@ async def parse_manager_note(request: ParseNoteRequest) -> ParseNoteResponse:
     Uses an LLM (Gemini) to extract scheduling information from free-text notes,
     including sick leave, time off, shift swaps, late arrivals, and coverage requests.
     """
-    import sys
-    from pathlib import Path
-
-    note_parser_path = Path(__file__).resolve().parents[4] / "packages" / "note_parser"
-    if str(note_parser_path) not in sys.path:
-        sys.path.insert(0, str(note_parser_path))
-
-    try:
-        from note_parser_module import parse_manager_note as parse_note
-    except ImportError as exc:
+    if not _NOTE_PARSER_AVAILABLE:
         raise HTTPException(
             status_code=500,
-            detail=f"Note parser module not available: {exc}",
-        ) from exc
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Note parser configuration error: {exc}",
-        ) from exc
+            detail=f"Note parser not available: {_note_parser_exc_msg}",
+        )
 
     try:
-        result = parse_note(
+        result = await _parse_note_async(
             note=request.note,
             today_override=request.today_override,
             employee_roster=request.employee_roster,
