@@ -364,3 +364,155 @@ def test_health_endpoint_reports_status():
     payload = response.json()
     assert payload["status"] == "explicit-workload-product-path"
     assert payload["emergency_recommendations"] == "fatigue-aware-ranking"
+
+
+# ---------------------------------------------------------------------------
+# /fatigue/scores endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_fatigue_scores_endpoint_returns_trajectories_for_employees():
+    response = client.post(
+        "/api/v1/fatigue/scores",
+        json={
+            "start_date": "2026-03-10",
+            "num_days": 3,
+            "employees": [
+                {"employee_id": 0, "region": "Canada"},
+                {"employee_id": 1, "region": "India"},
+            ],
+            "recent_assignments": [],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["start_date"] == "2026-03-10"
+    assert payload["num_days"] == 3
+    assert "0" in payload["fatigue_trajectories"]
+    assert "1" in payload["fatigue_trajectories"]
+    # Each trajectory should have exactly num_days entries
+    assert len(payload["fatigue_trajectories"]["0"]) == 3
+    assert len(payload["fatigue_trajectories"]["1"]) == 3
+    # Scores must be in [0, 1]
+    for emp_id, trajectory in payload["fatigue_trajectories"].items():
+        for score in trajectory:
+            assert 0.0 <= score <= 1.0
+
+
+def test_fatigue_scores_endpoint_reflects_rest_hours_in_scores():
+    """An employee who just finished a night shift should have higher fatigue
+    than one with no recent assignments."""
+    response = client.post(
+        "/api/v1/fatigue/scores",
+        json={
+            "start_date": "2026-03-10",
+            "num_days": 1,
+            "employees": [
+                {"employee_id": 0, "region": "Canada"},
+                {"employee_id": 1, "region": "Canada"},
+            ],
+            "recent_assignments": [
+                {
+                    "employee_id": 0,
+                    # Shift ended just before start_date — minimal rest
+                    "start_utc": "2026-03-09T22:00:00Z",
+                    "end_utc": "2026-03-10T06:00:00Z",
+                    "shift_type": "night",
+                },
+                # Employee 1 has no recent assignments — should be low fatigue
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    # Employee 0 had <12h rest → higher fatigue; Employee 1 has baseline low fatigue
+    assert payload["fatigue_trajectories"]["0"][0] > payload["fatigue_trajectories"]["1"][0]
+
+
+def test_fatigue_scores_endpoint_consecutive_days_increases_fatigue():
+    """Consecutive days worked increase the fatigue score."""
+    response = client.post(
+        "/api/v1/fatigue/scores",
+        json={
+            "start_date": "2026-03-10",
+            "num_days": 1,
+            "employees": [
+                {"employee_id": 0, "region": "Canada"},
+                {"employee_id": 1, "region": "Canada"},
+            ],
+            "recent_assignments": [
+                # Employee 0: worked 3 consecutive days before start_date
+                {
+                    "employee_id": 0,
+                    "start_utc": "2026-03-07T09:00:00Z",
+                    "end_utc": "2026-03-07T17:00:00Z",
+                    "shift_type": "day",
+                },
+                {
+                    "employee_id": 0,
+                    "start_utc": "2026-03-08T09:00:00Z",
+                    "end_utc": "2026-03-08T17:00:00Z",
+                    "shift_type": "day",
+                },
+                {
+                    "employee_id": 0,
+                    "start_utc": "2026-03-09T09:00:00Z",
+                    "end_utc": "2026-03-09T17:00:00Z",
+                    "shift_type": "day",
+                },
+                # Employee 1: no history
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    # Employee with consecutive shifts should have elevated fatigue vs baseline
+    assert payload["fatigue_trajectories"]["0"][0] > payload["fatigue_trajectories"]["1"][0]
+
+
+def test_fatigue_scores_endpoint_empty_employees_returns_empty_trajectories():
+    response = client.post(
+        "/api/v1/fatigue/scores",
+        json={
+            "start_date": "2026-03-10",
+            "num_days": 3,
+            "employees": [],
+            "recent_assignments": [],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["fatigue_trajectories"] == {}
+
+
+def test_fatigue_scores_endpoint_defaults_to_heuristic_without_ml_model():
+    """Endpoint should return valid scores even when LSTM model is unavailable."""
+    response = client.post(
+        "/api/v1/fatigue/scores",
+        json={
+            "start_date": "2026-03-10",
+            "num_days": 7,
+            "employees": [
+                {"employee_id": 0, "region": "Serbia"},
+            ],
+            "recent_assignments": [
+                {
+                    "employee_id": 0,
+                    "start_utc": "2026-03-09T09:00:00Z",
+                    "end_utc": "2026-03-09T17:00:00Z",
+                    "shift_type": "day",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "0" in payload["fatigue_trajectories"]
+    assert len(payload["fatigue_trajectories"]["0"]) == 7
+    for score in payload["fatigue_trajectories"]["0"]:
+        assert 0.0 <= score <= 1.0

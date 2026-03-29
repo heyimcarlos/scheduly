@@ -15,12 +15,15 @@ from app.models.schemas import (
     DemandPlanResponse,
     EmergencyRecommendationRequest,
     EmergencyRecommendationResponse,
+    FatigueScoresRequest,
+    FatigueScoresResponse,
     PlanningValidationResponse,
     ScheduleJobResponse,
     SchedulePlanResponse,
     ScheduleRequest,
     SystemConfig,
 )
+from app.services.fatigue_scoring import FatigueScoringService
 from app.services.job_store import JobStore, get_job_store
 from app.services.optimizer import OptimizerService
 
@@ -162,3 +165,35 @@ async def check_schedule_health() -> dict:
         "async_jobs": "in-memory-job-store",
         "status": "explicit-workload-product-path",
     }
+
+
+@router.post("/fatigue/scores", response_model=FatigueScoresResponse)
+async def compute_fatigue_scores(
+    request: FatigueScoresRequest,
+    settings: Settings = Depends(get_settings),
+) -> FatigueScoresResponse:
+    """Compute per-employee fatigue trajectories for the scheduling window.
+
+    This endpoint runs the LSTM model (or heuristic fallback) to compute
+    day-by-day fatigue scores without invoking the CP-SAT scheduler.
+    Use this to power the fatigue rings in the UI after manual shift changes.
+    """
+    import json
+
+    with open(settings.shared_config_path) as f:
+        config = json.load(f)
+
+    service = FatigueScoringService(system_config=config)
+    recent_shifts = [item.model_dump() for item in request.recent_assignments]
+    trajectories = service.score_team_fatigue(
+        employees=[e.model_dump() for e in request.employees],
+        start_date=request.start_date,
+        num_days=request.num_days,
+        recent_shifts=recent_shifts,
+        prefer_model=True,
+    )
+    return FatigueScoresResponse(
+        start_date=request.start_date,
+        num_days=request.num_days,
+        fatigue_trajectories=trajectories,
+    )
