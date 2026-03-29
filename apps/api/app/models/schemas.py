@@ -382,6 +382,19 @@ class CoverageImpactSummary(BaseModel):
     optional_replacement_count: int
 
 
+class FatigueScoresRequest(BaseModel):
+    start_date: date
+    num_days: int = Field(default=14, ge=1, le=92)
+    employees: List[EmployeeInput] = Field(default_factory=list)
+    recent_assignments: List[HistoricalShiftAssignment] = Field(default_factory=list)
+
+
+class FatigueScoresResponse(BaseModel):
+    start_date: date
+    num_days: int
+    fatigue_trajectories: Dict[int, List[float]]  # employee_id -> [score per day, 0-1]
+
+
 class FatigueAlert(BaseModel):
     employee_id: int
     employee_name: Optional[str] = None

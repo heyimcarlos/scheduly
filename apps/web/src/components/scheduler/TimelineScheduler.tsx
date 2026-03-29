@@ -30,8 +30,9 @@ import {
 import { useEmergencyRecommendations } from "@/hooks/useEmergencyRecommendations";
 import { useAbsenceImpact } from "@/hooks/useAbsenceImpact";
 import { ReplacementRecommendation } from "@/lib/api";
-import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift, Timezone } from "@/types/scheduler";
-import { useRedistribute } from "@/hooks/useRedistribute";
+import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift } from "@/types/scheduler";
+import { useRedistribute, type FatigueScoresMap } from "@/hooks/useRedistribute";
+import { useFatigueScores } from "@/hooks/useFatigueScores";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
 import { WorkloadTemplatePoint } from "@/types/teamProfile";
 import { toast } from "sonner";
@@ -154,6 +155,10 @@ export function TimelineScheduler() {
   const redistribute = useRedistribute();
   const recommendations = useEmergencyRecommendations();
   const absenceImpact = useAbsenceImpact();
+  const fatigueScores = useFatigueScores();
+
+  // Combined fatigue scores: AI redistribution scores override manual scores
+  const [fatigueScoresMap, setFatigueScoresMap] = useState<FatigueScoresMap>({});
   const {
     activeTeamProfile,
     activeTeamProfileConfig,
@@ -188,8 +193,12 @@ export function TimelineScheduler() {
       toast.success("AI redistribution complete", {
         description: `${written} ghost shifts written from the timeline view.`,
       });
+      // Update fatigue rings with the freshly computed trajectory scores
+      if (Object.keys(redistribute.fatigueScores).length > 0) {
+        setFatigueScoresMap(redistribute.fatigueScores);
+      }
     }
-  }, [redistribute.error, redistribute.solvedSchedule, redistribute.status]);
+  }, [redistribute.error, redistribute.solvedSchedule, redistribute.status, redistribute.fatigueScores]);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const days = useMemo(
@@ -384,7 +393,7 @@ export function TimelineScheduler() {
   );
 
   const handleApplyRecommendation = useCallback(
-    (recommendation: ReplacementRecommendation) => {
+    async (recommendation: ReplacementRecommendation) => {
       if (!selectedShift) return;
 
       const replacementMember = teamMembers[recommendation.replacement_employee_id];
@@ -393,7 +402,7 @@ export function TimelineScheduler() {
         return;
       }
 
-      createShift.mutate({
+      await createShift.mutateAsync({
         memberId: replacementMember.id,
         teamProfileId: replacementMember.teamProfileId,
         startTime: selectedShift.startTime,
@@ -403,8 +412,46 @@ export function TimelineScheduler() {
       });
       toast.success(`Coverage applied to ${replacementMember.name}`);
       setRecommendationsOpen(false);
+
+      // Recompute fatigue rings with the updated shift state
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const recommendationEmployees = teamMembers.map((member, idx) => ({
+        employee_id: idx,
+        region: member.region.charAt(0).toUpperCase() + member.region.slice(1),
+        employee_name: member.name,
+      }));
+      const memberIdsByEmployeeId = Object.fromEntries(
+        teamMembers.map((member, idx) => [idx, member.id]),
+      );
+      const recentAssignments = allShifts
+        .map((entry) => {
+          const employeeIndex = teamMembers.findIndex((member) => member.id === entry.memberId);
+          return {
+            employee_id: employeeIndex,
+            start_utc: entry.startTime.toISOString(),
+            end_utc: entry.endTime.toISOString(),
+            shift_type: inferShiftKind(entry),
+            slot_name: entry.title ?? undefined,
+          };
+        })
+        .filter((entry) => entry.employee_id >= 0);
+
+      try {
+        const scores = await fatigueScores.mutateAsync({
+          request: {
+            start_date: todayStr,
+            num_days: 7,
+            employees: recommendationEmployees,
+            recent_assignments: recentAssignments,
+          },
+          memberIdsByEmployeeId,
+        });
+        setFatigueScoresMap((prev) => ({ ...prev, ...scores }));
+      } catch {
+        // Non-critical — rings will show stale scores
+      }
     },
-    [createShift, selectedShift, teamMembers],
+    [allShifts, createShift, fatigueScores, selectedShift, teamMembers],
   );
 
   // ── Day detail panel ─────────────────────────────────────────────────────
@@ -624,8 +671,7 @@ export function TimelineScheduler() {
 
               {/* Employee rows */}
               {employees.map(({ emp, totalHours, hourStatus, targetPercent }) => {
-                const isCritical = emp.fatigueScore >= 80;
-                const isWarning = emp.fatigueScore >= 50;
+                const ringScore = fatigueScoresMap[emp.id] ?? emp.fatigueScore;
                 return (
                   <div
                     key={emp.id}
@@ -633,7 +679,7 @@ export function TimelineScheduler() {
                       `${rowHeight} flex items-center gap-2.5 px-3 border-b border-border`,
                     )}
                   >
-                    <FatigueRing score={emp.fatigueScore} size="md">
+                    <FatigueRing score={ringScore} size="md">
                       <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                         {emp.initials}
                       </div>

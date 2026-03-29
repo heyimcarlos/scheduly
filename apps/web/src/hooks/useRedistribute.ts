@@ -32,6 +32,9 @@ export type RedistributeStatus =
   | 'completed'
   | 'failed';
 
+/** memberId -> fatigue score (0-100), derived from current-day (day 0) trajectory. */
+export type FatigueScoresMap = Record<string, number>;
+
 interface TriggerOptions {
   memberIdsByEmployeeId?: Record<number, string>;
 }
@@ -49,6 +52,8 @@ export interface UseRedistributeReturn {
   fatigueAlerts: FatigueAlert[];
   /** Converted Shift objects from solvedSchedule — available when status === "completed". */
   convertedShifts: Shift[];
+  /** Current-day fatigue scores (0-100) mapped by memberId — available when status === "completed". */
+  fatigueScores: FatigueScoresMap;
   /** Error message — available when status === "failed". */
   error: string | null;
 }
@@ -92,6 +97,23 @@ function solvedScheduleToShifts(
   });
 }
 
+/** Extract day-0 fatigue scores from a SolvedSchedule, keyed by memberId. */
+function solvedScheduleToFatigueScores(
+  schedule: SolvedSchedule,
+  memberIdsByEmployeeId: Record<number, string>,
+): FatigueScoresMap {
+  const result: FatigueScoresMap = {};
+  for (const staffRow of schedule.staff_schedules) {
+    const memberId = memberIdsByEmployeeId[staffRow.employee_id];
+    if (!memberId) continue;
+    const day0 = staffRow.days[0];
+    if (day0?.fatigue_score != null) {
+      result[memberId] = Math.round(day0.fatigue_score * 100);
+    }
+  }
+  return result;
+}
+
 export function useRedistribute(): UseRedistributeReturn {
   const qc = useQueryClient();
   const { config: activeTeamProfileConfig, profile: activeTeamProfile } = useActiveTeamProfile();
@@ -100,6 +122,7 @@ export function useRedistribute(): UseRedistributeReturn {
   const [solvedSchedule, setSolvedSchedule] = useState<SolvedSchedule | null>(null);
   const [convertedShifts, setConvertedShifts] = useState<Shift[]>([]);
   const [fatigueAlerts, setFatigueAlerts] = useState<FatigueAlert[]>([]);
+  const [fatigueScores, setFatigueScores] = useState<FatigueScoresMap>({});
   const [error, setError] = useState<string | null>(null);
   const memberIdsByEmployeeIdRef = useRef<Record<number, string>>({});
   const persistedJobIdsRef = useRef<Set<string>>(new Set());
@@ -112,6 +135,7 @@ export function useRedistribute(): UseRedistributeReturn {
       setSolvedSchedule(null);
       setError(null);
       setJobId(null);
+      setFatigueScores({});
     },
     onSuccess: ({ job_id }) => {
         setJobId(job_id);
@@ -205,7 +229,9 @@ export function useRedistribute(): UseRedistributeReturn {
 
         setLocalStatus('completed');
         const localShifts = solvedScheduleToShifts(schedule, memberIdsByEmployeeIdRef.current);
+        const scores = solvedScheduleToFatigueScores(schedule, memberIdsByEmployeeIdRef.current);
         setConvertedShifts(localShifts);
+        setFatigueScores(scores);
       } else if (job.status === 'failed') {
         setLocalStatus('failed');
         setError(job.error ?? 'Solver failed with no error message.');
@@ -247,5 +273,5 @@ export function useRedistribute(): UseRedistributeReturn {
 
   const isRunning = localStatus === 'pending' || localStatus === 'running' || localStatus === 'persisting';
 
-  return { trigger, isRunning, status: localStatus, solvedSchedule, fatigueAlerts, convertedShifts, error };
+  return { trigger, isRunning, status: localStatus, solvedSchedule, fatigueAlerts, convertedShifts, fatigueScores, error };
 }

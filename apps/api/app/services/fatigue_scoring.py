@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -235,7 +235,8 @@ class FatigueScoringService:
             return 0.0
 
         last_shift = past_shifts[0]
-        rest_hours = (current_date - last_shift["end_utc"].replace(tzinfo=None)).total_seconds() / 3600.0
+        current_date_dt = datetime.combine(current_date, datetime.min.time())
+        rest_hours = (current_date_dt - last_shift["end_utc"].replace(tzinfo=None)).total_seconds() / 3600.0
         rest_hours = max(0.0, rest_hours)
 
         # Count consecutive days worked (backward from yesterday)

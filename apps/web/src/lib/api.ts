@@ -224,6 +224,19 @@ export interface FatigueAlert {
   message: string;
 }
 
+export interface FatigueScoresRequest {
+  start_date: string;
+  num_days: number;
+  employees: EmployeeInput[];
+  recent_assignments: HistoricalShiftAssignment[];
+}
+
+export interface FatigueScoresResponse {
+  start_date: string;
+  num_days: number;
+  fatigue_trajectories: Record<number, number[]>;  // employee_id -> [score per day, 0-1]
+}
+
 export interface ScheduleJobResponse {
   job_id: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -270,6 +283,21 @@ export async function startRedistribute(
  */
 export async function pollJob(jobId: string): Promise<ScheduleJobResponse> {
   return apiFetch<ScheduleJobResponse>(`/schedule/job/${jobId}`);
+}
+
+/**
+ * POST /fatigue/scores
+ *
+ * Computes per-employee fatigue trajectories without invoking the scheduler.
+ * Use to power fatigue rings after manual shift changes.
+ */
+export async function computeFatigueScores(
+  request: FatigueScoresRequest,
+): Promise<FatigueScoresResponse> {
+  return apiFetch<FatigueScoresResponse>('/fatigue/scores', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
 }
 
 export async function getEmergencyRecommendations(
