@@ -310,6 +310,7 @@ export function CalendarGrid({
                         key={item.key}
                         shifts={item.shifts}
                         members={item.members}
+                        family={item.family}
                         onShiftClick={onShiftClick}
                         style={style}
                       />
@@ -321,6 +322,7 @@ export function CalendarGrid({
                       key={item.key}
                       shift={item.shift}
                       member={item.member}
+                      family={item.family}
                       isDragging={draggedShift?.id === item.shift.id}
                       approvedTimeOff={item.approvedTimeOff}
                       violation={item.violation}
