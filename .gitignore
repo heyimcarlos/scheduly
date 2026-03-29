@@ -11,5 +11,3 @@ server/dist
 public/dist
 __pycache__
 .pyc
-
-supabase
