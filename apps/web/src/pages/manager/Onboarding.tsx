@@ -350,6 +350,15 @@ export default function Onboarding() {
     }));
   }, []);
 
+  // ── Build config for review (hoisted above callbacks that need service_timezone) ──
+
+  const compiledConfig = buildTeamProfileConfig(
+    timezone,
+    rules,
+    selectedRegions,
+    slotPolicies,
+  );
+
   // ── Scratch-mode slot handlers ───────────────────────────────────────────
 
   const handleAddSlot = useCallback(() => {
@@ -396,7 +405,7 @@ export default function Onboarding() {
   const handleSaveSlot = useCallback(() => {
     if (!slotForm.name || !slotForm.coverageLabel) return;
     const key = slotForm.name.replace(/\s+/g, '') + Date.now().toString(36);
-    const serviceTz = activeTeamProfileConfig?.service_timezone ?? 'America/Toronto';
+    const serviceTz = compiledConfig.service_timezone ?? 'America/Toronto';
     const utcStart = localToUtc(slotForm.localStartTime, serviceTz);
     // Overnight: local end time is on the next calendar day
     const localEnd = slotForm.localEndTime;
@@ -422,7 +431,7 @@ export default function Onboarding() {
     setAddingSlot(false);
     setEditingSlotKey(null);
     setSlotForm(EMPTY_SLOT_FORM);
-  }, [slotForm, activeTeamProfileConfig?.service_timezone]);
+  }, [slotForm, compiledConfig.service_timezone]);
 
   const handleCancelSlotForm = useCallback(() => {
     setAddingSlot(false);
@@ -466,15 +475,6 @@ export default function Onboarding() {
   // ── All members (existing + newly added during onboarding) ─────────────────
 
   const allMembers = [...existingMembers, ...teamMembers];
-
-  // ── Build config for review ───────────────────────────────────────────────
-
-  const compiledConfig = buildTeamProfileConfig(
-    timezone,
-    rules,
-    selectedRegions,
-    slotPolicies,
-  );
 
   // ── Adapted slots for display (with invalid flag) ─────────────────────────
 
@@ -632,7 +632,7 @@ export default function Onboarding() {
                 editingSlotKey={editingSlotKey}
                 slotForm={slotForm}
                 selectedRegionIds={Object.keys(selectedRegions)}
-                serviceTimezone={activeTeamProfileConfig?.service_timezone ?? 'America/Toronto'}
+                serviceTimezone={compiledConfig.service_timezone}
                 onAddSlot={handleAddSlot}
                 onEditSlot={handleEditSlot}
                 onDeleteSlot={handleDeleteSlot}
