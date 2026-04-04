@@ -12,6 +12,7 @@ import { useBulkUpsertTeamMembers } from '@/hooks/useSchedulerData';
 import {
   buildTeamProfileConfig,
   DEFAULT_RULES,
+  DEFAULT_DAY_WEIGHTS,
   type TeamProfileConfig,
   type SlotPolicy,
 } from '@/types/teamProfile';
@@ -231,6 +232,8 @@ export default function Onboarding() {
   const [selectedRegions, setSelectedRegions] = useState<Record<string, string>>({});
   // Rules
   const [rules, setRules] = useState<TeamProfileConfig['rules']>({ ...DEFAULT_RULES });
+  // Day-of-week weights (0–5, higher = more shifts preferred on that day)
+  const [dayWeights, setDayWeights] = useState<Record<string, number>>({ ...DEFAULT_DAY_WEIGHTS });
   // Slot policies (key → SlotPolicy)
   const [slotPolicies, setSlotPolicies] = useState<Record<string, SlotPolicy>>({});
   // Scratch-mode slot definitions (key → full slot data including times/shift type)
@@ -352,12 +355,10 @@ export default function Onboarding() {
 
   // ── Build config for review (hoisted above callbacks that need service_timezone) ──
 
-  const compiledConfig = buildTeamProfileConfig(
-    timezone,
-    rules,
-    selectedRegions,
-    slotPolicies,
-  );
+  const compiledConfig = {
+    ...buildTeamProfileConfig(timezone, rules, selectedRegions, slotPolicies),
+    day_weights: dayWeights,
+  };
 
   // ── Scratch-mode slot handlers ───────────────────────────────────────────
 
@@ -622,7 +623,12 @@ export default function Onboarding() {
               />
             )}
             {step === 2 && (
-              <StepRules rules={rules} onUpdateRule={setRules} />
+              <StepRules
+                rules={rules}
+                onUpdateRule={setRules}
+                dayWeights={dayWeights}
+                onUpdateDayWeights={setDayWeights}
+              />
             )}
             {step === 3 && (
               <StepSlots
@@ -923,14 +929,27 @@ function StepRegions({
 function StepRules({
   rules,
   onUpdateRule,
+  dayWeights,
+  onUpdateDayWeights,
 }: {
   rules: TeamProfileConfig['rules'];
   onUpdateRule: (r: TeamProfileConfig['rules']) => void;
+  dayWeights: Record<string, number>;
+  onUpdateDayWeights: (w: Record<string, number>) => void;
 }) {
   const update = <K extends keyof TeamProfileConfig['rules']>(
     key: K,
     value: TeamProfileConfig['rules'][K],
   ) => onUpdateRule({ ...rules, [key]: value });
+
+  const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const DAY_LABELS: Record<string, string> = {
+    monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed',
+    thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun',
+  };
+  const updateWeight = (day: string, val: number) => {
+    onUpdateDayWeights({ ...dayWeights, [day]: Math.min(5, Math.max(0, val)) });
+  };
 
   return (
     <div className="space-y-6">
@@ -939,6 +958,40 @@ function StepRules({
         <p className="mt-1 text-sm text-muted-foreground">
           Set compliance and staffing constraints for the scheduler.
         </p>
+      </div>
+
+      {/* Day-of-week weight grid */}
+      <div className="space-y-3">
+        <div>
+          <Label className="text-sm font-medium">Shift distribution weight</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Higher weight = solver prefers assigning more shifts on that day. Range 0–5.
+          </p>
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {DAY_ORDER.map(day => (
+            <div key={day} className="flex flex-col items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium">{DAY_LABELS[day]}</span>
+              <Input
+                type="number"
+                min={0}
+                max={5}
+                value={dayWeights[day] ?? 3}
+                onChange={e => updateWeight(day, Number(e.target.value))}
+                className="w-13 h-9 text-center"
+              />
+              <div
+                className="h-1.5 w-full rounded-full transition-colors"
+                style={{
+                  backgroundColor: dayWeights[day] > 0
+                    ? `hsl(142 70% ${30 + dayWeights[day] * 8}%)`
+                    : 'hsl(0 60% 60%)',
+                  opacity: 0.6 + (dayWeights[day] / 5) * 0.4,
+                }}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -990,14 +1043,20 @@ function StepRules({
   );
 }
 
-/** Convert a UTC HH:mm time to local HH:mm in a given IANA timezone. */
+/** Strip seconds from HH:mm:ss → HH:mm */
+function stripSeconds(t: string): string {
+  return t.length >= 5 ? t.slice(0, 5) : t;
+}
+
+/** Convert a UTC HH:mm or HH:mm:ss time to local HH:mm in a given IANA timezone. */
 function utcToLocal(utcTime: string, timezone: string): string {
   try {
-    const utcDate = parseISO(`2026-01-01T${utcTime}:00Z`);
+    const normalized = stripSeconds(utcTime); // DB may return HH:mm:ss
+    const utcDate = parseISO(`2026-01-01T${normalized}:00Z`);
     const zoned = toZonedTime(utcDate, timezone);
     return `${String(zoned.getHours()).padStart(2, '0')}:${String(zoned.getMinutes()).padStart(2, '0')}`;
   } catch {
-    return utcTime; // fall back to UTC if conversion fails
+    return stripSeconds(utcTime); // fall back to HH:mm if conversion fails
   }
 }
 
@@ -1179,11 +1238,10 @@ function StepSlots({
                             onUpdateSlotForm('allowedRegions', [...slotForm.allowedRegions, rid]);
                           }
                         }}
-                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                          isSelected
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-secondary text-foreground border-border hover:border-primary/50'
-                        }`}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${isSelected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-secondary text-foreground border-border hover:border-primary/50'
+                          }`}
                       >
                         {rid.charAt(0).toUpperCase() + rid.slice(1)}
                       </button>
@@ -1639,15 +1697,17 @@ function RightPanel({
             {slots.length === 0 ? (
               <p className="text-xs text-muted-foreground">No slots defined.</p>
             ) : (
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3">
                 {slots.map(({ key, policy, isInvalid }) => (
-                  <div key={key} className="flex justify-between">
-                    <span className={`text-muted-foreground truncate mr-2 ${isInvalid ? 'line-through' : ''}`}>
-                      {policy.coverage_label}
-                    </span>
-                    <span className={`font-medium whitespace-nowrap ${isInvalid ? 'text-destructive' : 'text-foreground'}`}>
-                      {policy.min_headcount ?? 0}–{policy.max_headcount ?? '∞'}
-                    </span>
+                  <div key={key} className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className={`text-sm text-muted-foreground truncate mr-2 ${isInvalid ? 'line-through' : ''}`}>
+                        {policy.coverage_label}
+                      </span>
+                      <span className={`font-medium whitespace-nowrap text-sm ${isInvalid ? 'text-destructive' : 'text-foreground'}`}>
+                        {policy.min_headcount ?? 0} – {policy.max_headcount ?? '∞'}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

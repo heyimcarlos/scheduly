@@ -48,6 +48,15 @@ class TeamProfileRuleConfig(BaseModel):
     enforce_senior_per_shift: bool = True
     fatigue_weight: float = 0.0
     fatigue_threshold: float = 0.6
+    day_weights: Dict[str, int] = Field(default_factory=lambda: {
+        "monday": 3,
+        "tuesday": 3,
+        "wednesday": 3,
+        "thursday": 3,
+        "friday": 3,
+        "saturday": 1,
+        "sunday": 1,
+    })
 
 
 class TeamProfileAnswersConfig(BaseModel):
@@ -127,6 +136,15 @@ class TeamProfileConfig(BaseModel):
     answers: Optional[TeamProfileAnswersConfig] = None
     demand_overrides: Optional[DemandOverrides] = None
     workload_template: List[SlotDemandTemplatePoint] = Field(default_factory=list)
+    day_weights: Dict[str, int] = Field(default_factory=lambda: {
+        "monday": 3,
+        "tuesday": 3,
+        "wednesday": 3,
+        "thursday": 3,
+        "friday": 3,
+        "saturday": 1,
+        "sunday": 1,
+    })
 
 
 class DSTConfig(BaseModel):
