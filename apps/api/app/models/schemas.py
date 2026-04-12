@@ -533,6 +533,58 @@ class SchedulingEvent(BaseModel):
     confidence: Literal["high", "medium", "low"] = "medium"
 
 
+class UnavailabilityPlanCreate(BaseModel):
+    """Request to create an unavailability plan."""
+    team_profile_id: str
+    absent_member_id: str
+    start_date: date
+    end_date: date
+
+
+class UnavailabilityDayRecommendation(BaseModel):
+    """A single recommendation candidate for a day."""
+    member_id: str
+    member_name: str
+    region: str
+    ranking_score: float
+    fatigue_score: float
+    rest_hours: float
+    consecutive_days: int
+    overtime_hours: float
+    cascade_cost: int = 0
+    rationale: str = ""
+
+
+class UnavailabilityDayResponse(BaseModel):
+    """A single day within an unavailability plan."""
+    id: str
+    plan_id: str
+    date: date
+    original_shift_id: Optional[str] = None
+    coverage_shift_id: Optional[str] = None
+    approved_member_id: Optional[str] = None
+    status: str  # pending | approved | skipped | no_gap | needs_manual
+    cascade_depth: int = 0
+    recommendations: List[UnavailabilityDayRecommendation] = Field(default_factory=list)
+
+
+class UnavailabilityPlanResponse(BaseModel):
+    """Full unavailability plan with all days."""
+    id: str
+    team_profile_id: str
+    absent_member_id: str
+    start_date: date
+    end_date: date
+    status: str  # pending | in_progress | completed | cancelled
+    cascade_depth_limit: int = 3
+    days: List[UnavailabilityDayResponse] = Field(default_factory=list)
+
+
+class DayApproveRequest(BaseModel):
+    """Request to approve a specific day with a chosen replacement."""
+    approved_member_id: str
+
+
 class ParseNoteRequest(BaseModel):
     """Request model for parsing manager notes."""
 

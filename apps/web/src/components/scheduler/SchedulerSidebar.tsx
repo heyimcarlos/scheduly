@@ -16,6 +16,7 @@ interface SchedulerSidebarProps {
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
   onProcessNotes: (notes: string) => void;
+  onCreateUnavailabilityPlan?: (memberId: string, startDate: string, endDate: string) => void;
   fatigueAlerts?: FatigueAlert[];
 }
 
@@ -25,6 +26,7 @@ export function SchedulerSidebar({
   onAcceptSuggestion,
   onRejectSuggestion,
   onProcessNotes,
+  onCreateUnavailabilityPlan,
   fatigueAlerts = [],
 }: SchedulerSidebarProps) {
   const [expandedSections, setExpandedSections] = useState({
@@ -72,7 +74,11 @@ export function SchedulerSidebar({
               )}
             </button>
             {expandedSections.notes && (
-              <SMENotesPanel onProcessNotes={onProcessNotes} />
+              <SMENotesPanel
+                onProcessNotes={onProcessNotes}
+                onCreateUnavailabilityPlan={onCreateUnavailabilityPlan}
+                teamMembers={teamMembers.map((m) => ({ id: m.id, name: m.name }))}
+              />
             )}
           </div>
 
