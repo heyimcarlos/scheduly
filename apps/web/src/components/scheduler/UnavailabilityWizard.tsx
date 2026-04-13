@@ -103,10 +103,7 @@ export function UnavailabilityWizard({
   );
   const [plan, setPlan] = useState<UnavailabilityPlan | null>(null);
 
-  const { data: allTeamMembers = [] } = useTeamMembers();
-  const teamMembers = allTeamMembers.filter(
-    (m) => m.teamProfileId === teamProfileId,
-  );
+  const { data: teamMembers = [] } = useTeamMembers();
   const createPlan = useCreateUnavailabilityPlan();
   const approveDay = useApproveDay();
   const skipDay = useSkipDay();
@@ -136,10 +133,15 @@ export function UnavailabilityWizard({
 
   const handleAnalyze = () => {
     if (!selectedMemberId || !dateRange?.from || !dateRange?.to) return;
+    // Derive team_profile_id from the selected member so the plan is scoped
+    // to the profile that actually owns this member (rather than relying on
+    // the user's active_team_profile_id which may point to a different profile).
+    const selectedMember = teamMembers.find((m) => m.id === selectedMemberId);
+    const memberProfileId = selectedMember?.teamProfileId ?? teamProfileId;
     setStep('loading');
     createPlan.mutate(
       {
-        team_profile_id: teamProfileId,
+        team_profile_id: memberProfileId,
         absent_member_id: selectedMemberId,
         start_date: format(dateRange.from, 'yyyy-MM-dd'),
         end_date: format(dateRange.to, 'yyyy-MM-dd'),
