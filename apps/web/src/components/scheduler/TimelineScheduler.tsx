@@ -9,6 +9,7 @@ import {
   MapPin,
   Settings2,
   Sparkles,
+  UserX,
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ import { useFatigueScores } from "@/hooks/useFatigueScores";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
 import { WorkloadTemplatePoint } from "@/types/teamProfile";
 import { toast } from "sonner";
+import { UnavailabilityWizard } from "./UnavailabilityWizard";
+import { useInProgressPlan } from "@/hooks/useUnavailabilityPlan";
 import { zonedLocalTimeToUtc } from "@/lib/timezone";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -159,6 +162,8 @@ export function TimelineScheduler() {
 
   // Combined fatigue scores: AI redistribution scores override manual scores
   const [fatigueScoresMap, setFatigueScoresMap] = useState<FatigueScoresMap>({});
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const { data: inProgressPlanId } = useInProgressPlan(activeTeamProfile?.id ?? null);
   const {
     activeTeamProfile,
     activeTeamProfileConfig,
@@ -634,6 +639,19 @@ export function TimelineScheduler() {
             </ToggleGroup>
 
             <Button
+              onClick={() => setWizardOpen(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 h-8 px-3 text-xs relative"
+            >
+              <UserX className="h-3.5 w-3.5" />
+              Mark Unavailable
+              {inProgressPlanId && (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary animate-pulse" />
+              )}
+            </Button>
+
+            <Button
               onClick={handleRedistribute}
               disabled={redistribute.isRunning}
               size="sm"
@@ -831,6 +849,15 @@ export function TimelineScheduler() {
         onSave={handleShiftSave}
         onDelete={handleShiftDelete}
       />
+
+      {activeTeamProfile && (
+        <UnavailabilityWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          teamProfileId={activeTeamProfile.id}
+          resumePlanId={inProgressPlanId}
+        />
+      )}
     </div>
   );
 }

@@ -346,6 +346,90 @@ export async function analyzeAbsenceImpact(
  *
  * Parse a natural language manager note into structured scheduling events.
  */
+// --- Unavailability Plan ---
+
+export interface UnavailabilityDayRecommendation {
+  member_id: string;
+  member_name: string;
+  region: string;
+  ranking_score: number;
+  fatigue_score: number;
+  rest_hours: number;
+  consecutive_days: number;
+  overtime_hours: number;
+  cascade_cost: number;
+  rationale: string;
+}
+
+export interface UnavailabilityDay {
+  id: string;
+  plan_id: string;
+  date: string;
+  original_shift_id: string | null;
+  coverage_shift_id: string | null;
+  approved_member_id: string | null;
+  status: 'pending' | 'approved' | 'skipped' | 'no_gap' | 'needs_manual';
+  cascade_depth: number;
+  recommendations: UnavailabilityDayRecommendation[];
+}
+
+export interface UnavailabilityPlan {
+  id: string;
+  team_profile_id: string;
+  absent_member_id: string;
+  start_date: string;
+  end_date: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  cascade_depth_limit: number;
+  days: UnavailabilityDay[];
+}
+
+export interface UnavailabilityPlanCreateRequest {
+  team_profile_id: string;
+  absent_member_id: string;
+  start_date: string;
+  end_date: string;
+}
+
+export async function createUnavailabilityPlan(
+  request: UnavailabilityPlanCreateRequest,
+): Promise<UnavailabilityPlan> {
+  return apiFetch<UnavailabilityPlan>('/unavailability/plan', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+export async function getUnavailabilityPlan(
+  planId: string,
+): Promise<UnavailabilityPlan> {
+  return apiFetch<UnavailabilityPlan>(`/unavailability/plan/${planId}`);
+}
+
+export async function approveUnavailabilityDay(
+  planId: string,
+  dayId: string,
+  approvedMemberId: string,
+): Promise<UnavailabilityPlan> {
+  return apiFetch<UnavailabilityPlan>(
+    `/unavailability/plan/${planId}/day/${dayId}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ approved_member_id: approvedMemberId }),
+    },
+  );
+}
+
+export async function skipUnavailabilityDay(
+  planId: string,
+  dayId: string,
+): Promise<UnavailabilityPlan> {
+  return apiFetch<UnavailabilityPlan>(
+    `/unavailability/plan/${planId}/day/${dayId}/skip`,
+    { method: 'POST' },
+  );
+}
+
 export async function parseManagerNote(
   request: ParseNoteRequest,
 ): Promise<ParseNoteResponse> {
