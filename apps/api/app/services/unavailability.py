@@ -477,21 +477,30 @@ class UnavailabilityRecommendationService:
             member_name = member.get("name", "Unknown")
             member_region = member.get("region", "Unknown")
 
-            # Check if member has an OVERLAPPING shift (not just any shift on the day)
-            # A member working a different slot (e.g., evening) can still cover a day slot
-            has_overlapping_shift = any(
-                s["member_id"] == member_id
+            # Check if member has an OVERLAPPING shift on the gap day
+            # Only count shifts that are on the same calendar day AND overlap in time
+            # This allows members from different non-overlapping slots to be candidates
+            member_day_shifts = [
+                s for s in all_shifts
+                if s["member_id"] == member_id
+                and s["start_time"][:10] == shift_date_str
                 and s.get("status", "active") == "active"
-                and _shifts_overlap(
+            ]
+            has_overlapping_shift = any(
+                _shifts_overlap(
                     _parse_datetime(s["start_time"]),
                     _parse_datetime(s["end_time"]),
                     shift_start,
                     shift_end,
                 )
-                for s in all_shifts
+                for s in member_day_shifts
             )
             if has_overlapping_shift:
-                skipped_reasons[member_name] = "has overlapping shift"
+                overlapping_slots = [s.get("title", "?") for s in member_day_shifts]
+                skipped_reasons[member_name] = (
+                    f"has overlapping shift on {shift_date_str} "
+                    f"(slots: {', '.join(overlapping_slots)})"
+                )
                 continue
 
             # Gather member's shift history for fatigue scoring

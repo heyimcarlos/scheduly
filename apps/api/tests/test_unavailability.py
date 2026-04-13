@@ -769,3 +769,288 @@ def test_no_cascade_when_no_gap(mock_client):
 
     cascade_days = [d for d in result.days if d.cascade_depth > 0]
     assert len(cascade_days) == 0
+
+
+# ===========================================================================
+# Recommendation guarantee tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-01: Member who is OFF that day appears as a recommendation
+# ---------------------------------------------------------------------------
+
+def test_member_off_that_day_is_recommended(mock_client, service):
+    """A member with no shifts on the gap day must appear as a candidate."""
+    members = [
+        _make_member("m-absent", "Alice", "Canada"),
+        _make_member("m-off", "Bob", "Canada"),      # no shift on Apr 15
+        _make_member("m-working", "Carol", "Canada"), # works same slot on Apr 15
+    ]
+    shifts = [
+        # Alice's shift (the one being covered)
+        _make_shift("s-alice", "m-absent", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+        # Carol already works Morning1 same time — she should be filtered
+        _make_shift("s-carol", "m-working", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+        # Bob has NO shift on Apr 15 — he should be a candidate
+        _make_shift("s-bob-other", "m-off", "2026-04-14", start_hour=9, end_hour=17, title="Morning1"),
+    ]
+    slot_policies = {"Morning1": {"min_headcount": 2}}
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [
+        {"id": "tp-1", "config": {"slot_policies": slot_policies}}
+    ])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-absent",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 15),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 1, f"Expected 1 pending day, got statuses: {[d.status for d in result.days]}"
+    recs = pending[0].recommendations
+    assert len(recs) >= 1, "Expected at least 1 recommendation"
+    assert recs[0].member_name == "Bob", f"Expected Bob, got {recs[0].member_name}"
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-02: Member on a different non-overlapping slot is recommended
+# ---------------------------------------------------------------------------
+
+def test_member_on_different_slot_is_recommended(mock_client, service):
+    """A member working Evening1 (17-01) should be a valid candidate for Morning1 (09-17)."""
+    members = [
+        _make_member("m-absent", "Alice", "Canada"),
+        _make_member("m-evening", "Bob", "Canada"),
+    ]
+    shifts = [
+        _make_shift("s-alice", "m-absent", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+        # Bob works Evening1, which does NOT overlap Morning1
+        _make_shift("s-bob", "m-evening", "2026-04-15", start_hour=17, end_hour=23, title="Evening1",
+                    shift_type="evening"),
+    ]
+    slot_policies = {"Morning1": {"min_headcount": 1}}
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [
+        {"id": "tp-1", "config": {"slot_policies": slot_policies}}
+    ])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-absent",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 15),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 1
+    recs = pending[0].recommendations
+    assert len(recs) >= 1, "Bob (evening slot, no overlap) should be a candidate"
+    assert recs[0].member_name == "Bob"
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-03: Member on the SAME overlapping slot is NOT recommended
+# ---------------------------------------------------------------------------
+
+def test_member_on_same_overlapping_slot_is_excluded(mock_client, service):
+    """A member already working Morning1 09-17 cannot also cover Morning1 09-17."""
+    members = [
+        _make_member("m-absent", "Alice", "Canada"),
+        _make_member("m-same-slot", "Carol", "Canada"),
+        _make_member("m-off", "Dave", "Canada"),
+    ]
+    shifts = [
+        _make_shift("s-alice", "m-absent", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+        # Carol works the exact same slot/time — she should be excluded
+        _make_shift("s-carol", "m-same-slot", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+        # Dave is off — he should be the only candidate
+    ]
+    slot_policies = {"Morning1": {"min_headcount": 2}}
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [
+        {"id": "tp-1", "config": {"slot_policies": slot_policies}}
+    ])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-absent",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 15),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 1
+    recs = pending[0].recommendations
+    rec_names = [r.member_name for r in recs]
+    assert "Carol" not in rec_names, "Carol (overlapping shift) should be excluded"
+    assert "Dave" in rec_names, "Dave (off that day) should be a candidate"
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-04: Realistic SOC — follow-the-sun with multiple regions
+# ---------------------------------------------------------------------------
+
+def test_realistic_soc_cross_region_candidates(mock_client, service):
+    """In a follow-the-sun SOC, members from other regions working different
+    slots should appear as candidates."""
+    members = [
+        _make_member("m-alice", "Alice Chen", "Canada"),
+        _make_member("m-bob", "Bob Martinez", "Canada"),
+        _make_member("m-priya", "Priya Sharma", "India"),
+        _make_member("m-ana", "Ana Petrovic", "Serbia"),
+        _make_member("m-raj", "Raj Kumar", "India"),
+    ]
+    # Alice works Hybrid1 day shift; Bob works same slot; Priya/Ana work different slots;
+    # Raj is off
+    shifts = [
+        _make_shift("s-alice", "m-alice", "2026-04-15", start_hour=13, end_hour=21, title="Hybrid1"),
+        _make_shift("s-bob", "m-bob", "2026-04-15", start_hour=13, end_hour=21, title="Hybrid1"),
+        _make_shift("s-priya", "m-priya", "2026-04-15", start_hour=3, end_hour=11, title="Morning1"),
+        _make_shift("s-ana", "m-ana", "2026-04-15", start_hour=7, end_hour=15, title="Morning2"),
+        # Raj has no shift on Apr 15
+    ]
+    slot_policies = {"Hybrid1": {"min_headcount": 2}}
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [
+        {"id": "tp-1", "config": {"slot_policies": slot_policies}}
+    ])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-alice",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 15),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 1
+    recs = pending[0].recommendations
+    rec_names = {r.member_name for r in recs}
+
+    # Bob is excluded (overlaps 13-21 with Hybrid1 13-21)
+    assert "Bob Martinez" not in rec_names, "Bob overlaps the absent shift"
+
+    # Priya (03-11) does NOT overlap Alice (13-21) → candidate
+    assert "Priya Sharma" in rec_names, "Priya (Morning1 03-11) doesn't overlap Hybrid1 (13-21)"
+
+    # Raj has no shift at all → candidate
+    assert "Raj Kumar" in rec_names, "Raj (off that day) should be a candidate"
+
+    # Ana (07-15) OVERLAPS Alice (13-21) at 13-15 → excluded
+    assert "Ana Petrovic" not in rec_names, "Ana (07-15) overlaps Hybrid1 (13-21)"
+
+    # Same-region candidates (Raj=India) rank differently from cross-region
+    assert len(recs) >= 2
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-05: Multi-day plan — each gap day has its own recommendations
+# ---------------------------------------------------------------------------
+
+def test_multi_day_plan_each_day_has_recommendations(mock_client, service):
+    """A 3-day plan where each day has a gap should produce per-day recommendations."""
+    members = [
+        _make_member("m-absent", "Alice", "Canada"),
+        _make_member("m-avail", "Bob", "Canada"),
+    ]
+    # Alice works all 3 days; Bob only works day 2 (different slot, non-overlapping)
+    shifts = [
+        _make_shift("s-a1", "m-absent", "2026-04-15", start_hour=9, end_hour=17),
+        _make_shift("s-a2", "m-absent", "2026-04-16", start_hour=9, end_hour=17),
+        _make_shift("s-a3", "m-absent", "2026-04-17", start_hour=9, end_hour=17),
+        # Bob works evening on day 2 only (no overlap with 9-17)
+        _make_shift("s-b2", "m-avail", "2026-04-16", start_hour=18, end_hour=23,
+                    title="Evening1", shift_type="evening"),
+    ]
+    slot_policies = {"Morning1": {"min_headcount": 1}}
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [
+        {"id": "tp-1", "config": {"slot_policies": slot_policies}}
+    ])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-absent",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 17),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 3, f"Expected 3 pending days, got {len(pending)}"
+
+    # All 3 days should have Bob as a candidate (he's off days 1&3, non-overlapping day 2)
+    for day in pending:
+        assert len(day.recommendations) >= 1, (
+            f"Day {day.date} should have at least 1 recommendation, got 0"
+        )
+        assert day.recommendations[0].member_name == "Bob"
+
+
+# ---------------------------------------------------------------------------
+# TC-REC-06: Workload template minimums trigger gap detection
+# ---------------------------------------------------------------------------
+
+def test_workload_template_minimum_triggers_gap(mock_client, service):
+    """When slot_policies has no min_headcount but workload_template does,
+    gap detection should still work and produce recommendations."""
+    members = [
+        _make_member("m-absent", "Alice", "Canada"),
+        _make_member("m-avail", "Bob", "Canada"),
+    ]
+    shifts = [
+        _make_shift("s-alice", "m-absent", "2026-04-15", start_hour=9, end_hour=17, title="Morning1"),
+    ]
+    # slot_policies has no min_headcount, but workload_template does
+    config = {
+        "slot_policies": {"Morning1": {}},  # no min_headcount
+        "workload_template": [
+            {"slot_name": "Morning1", "minimum_headcount": 1, "day_type": "all"},
+        ],
+    }
+
+    mock_client.set_table_data("unavailability_plans", [])
+    mock_client.set_table_data("unavailability_days", [])
+    mock_client.set_table_data("shifts", shifts)
+    mock_client.set_table_data("team_members", members)
+    mock_client.set_table_data("team_profiles", [{"id": "tp-1", "config": config}])
+
+    request = UnavailabilityPlanCreate(
+        team_profile_id="tp-1",
+        absent_member_id="m-absent",
+        start_date=date(2026, 4, 15),
+        end_date=date(2026, 4, 15),
+    )
+    result = service.create_plan(request)
+
+    pending = [d for d in result.days if d.status == "pending"]
+    assert len(pending) == 1, f"Expected pending, got {[d.status for d in result.days]}"
+    assert len(pending[0].recommendations) >= 1, "Bob should be recommended"
+    assert pending[0].recommendations[0].member_name == "Bob"
