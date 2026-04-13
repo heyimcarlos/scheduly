@@ -103,7 +103,10 @@ export function UnavailabilityWizard({
   );
   const [plan, setPlan] = useState<UnavailabilityPlan | null>(null);
 
-  const { data: teamMembers = [] } = useTeamMembers();
+  const { data: allTeamMembers = [] } = useTeamMembers();
+  const teamMembers = allTeamMembers.filter(
+    (m) => m.teamProfileId === teamProfileId,
+  );
   const createPlan = useCreateUnavailabilityPlan();
   const approveDay = useApproveDay();
   const skipDay = useSkipDay();

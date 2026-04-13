@@ -35,12 +35,28 @@ class UnavailabilityRecommendationService:
 
     def create_plan(self, request: UnavailabilityPlanCreate) -> UnavailabilityPlanResponse:
         """Create an unavailability plan, detect gaps, and compute recommendations."""
+        team_profile_id = request.team_profile_id
+
+        # 0. Validate that absent member belongs to this team profile
+        member_check = (
+            self.client.table("team_members")
+            .select("id")
+            .eq("id", request.absent_member_id)
+            .eq("team_profile_id", team_profile_id)
+            .execute()
+        )
+        if not member_check.data:
+            raise ValueError(
+                f"Member {request.absent_member_id} is not part of "
+                f"team profile {team_profile_id}"
+            )
+
         # 1. Insert plan row
         plan_row = (
             self.client.table("unavailability_plans")
             .insert(
                 {
-                    "team_profile_id": request.team_profile_id,
+                    "team_profile_id": team_profile_id,
                     "absent_member_id": request.absent_member_id,
                     "start_date": request.start_date.isoformat(),
                     "end_date": request.end_date.isoformat(),
@@ -50,7 +66,6 @@ class UnavailabilityRecommendationService:
             .execute()
         )
         plan_id = plan_row.data[0]["id"]
-        team_profile_id = request.team_profile_id
 
         # 2. Query shifts and team members
         start_iso = request.start_date.isoformat()
@@ -58,11 +73,12 @@ class UnavailabilityRecommendationService:
         context_start = (request.start_date - timedelta(days=7)).isoformat()
         context_end = (request.end_date + timedelta(days=7)).isoformat()
 
-        # Get absent member's shifts in the date range
+        # Get absent member's shifts in the date range (scoped to this team profile)
         absent_shifts = (
             self.client.table("shifts")
             .select("*")
             .eq("member_id", request.absent_member_id)
+            .eq("team_profile_id", team_profile_id)
             .eq("status", "active")
             .gte("start_time", f"{start_iso}T00:00:00Z")
             .lte("start_time", f"{end_iso}T23:59:59Z")
@@ -83,6 +99,7 @@ class UnavailabilityRecommendationService:
             self.client.table("shifts")
             .select("*")
             .in_("member_id", member_ids)
+            .eq("team_profile_id", team_profile_id)
             .eq("status", "active")
             .gte("start_time", f"{context_start}T00:00:00Z")
             .lte("start_time", f"{context_end}T23:59:59Z")

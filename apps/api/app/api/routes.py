@@ -108,13 +108,17 @@ async def create_unavailability_plan(
     settings: Settings = Depends(get_settings),
 ) -> UnavailabilityPlanResponse:
     """Create an unavailability plan with replacement recommendations."""
+    from fastapi import HTTPException
     from app.services.unavailability import UnavailabilityRecommendationService
     from app.integrations.supabase import get_supabase_client
 
     client = get_supabase_client()
     config = OptimizerService.from_settings(settings).load_config()
     service = UnavailabilityRecommendationService(client=client, system_config=config)
-    return service.create_plan(request)
+    try:
+        return service.create_plan(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/unavailability/plan/{plan_id}", response_model=UnavailabilityPlanResponse)
