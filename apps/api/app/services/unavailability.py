@@ -89,6 +89,20 @@ class UnavailabilityRecommendationService:
             .execute()
         )
 
+        _logger.info(
+            "create_plan: absent_member=%s, range=%s→%s, "
+            "absent_shifts=%d, team_members=%d, all_shifts=%d",
+            request.absent_member_id, start_iso, end_iso,
+            len(absent_shifts.data), len(team_members.data), len(all_shifts.data),
+        )
+        if absent_shifts.data:
+            for s in absent_shifts.data:
+                _logger.info(
+                    "  absent shift: id=%s date=%s slot=%s type=%s %s→%s",
+                    s["id"], s["start_time"][:10], s.get("title"),
+                    s.get("shift_type"), s["start_time"], s["end_time"],
+                )
+
         # Build absent member shift dates for quick lookup
         absent_shift_dates: dict[str, dict[str, Any]] = {}
         for shift in absent_shifts.data:
@@ -432,6 +446,7 @@ class UnavailabilityRecommendationService:
         shift_date_str = absent_shift["start_time"][:10]
         shift_date = date.fromisoformat(shift_date_str)
         shift_start = _parse_datetime(absent_shift["start_time"])
+        shift_end = _parse_datetime(absent_shift["end_time"])
         shift_type = absent_shift.get("shift_type", "day")
         absent_region = None
 
@@ -442,23 +457,41 @@ class UnavailabilityRecommendationService:
                 break
         absent_region = absent_region or "Unknown"
 
+        _logger.info(
+            "Ranking candidates for %s on %s (slot=%s, type=%s, %s→%s). "
+            "Team has %d members, %d total shifts in context window.",
+            absent_member_id, shift_date_str,
+            absent_shift.get("title"), shift_type,
+            absent_shift["start_time"], absent_shift["end_time"],
+            len(team_members), len(all_shifts),
+        )
+
         candidates: list[UnavailabilityDayRecommendation] = []
+        skipped_reasons: dict[str, str] = {}
 
         for member in team_members:
             if member["id"] == absent_member_id:
                 continue
 
             member_id = member["id"]
+            member_name = member.get("name", "Unknown")
             member_region = member.get("region", "Unknown")
 
-            # Check if member already has a shift on this day
-            has_shift_on_day = any(
-                s["start_time"][:10] == shift_date_str
-                and s["member_id"] == member_id
+            # Check if member has an OVERLAPPING shift (not just any shift on the day)
+            # A member working a different slot (e.g., evening) can still cover a day slot
+            has_overlapping_shift = any(
+                s["member_id"] == member_id
                 and s.get("status", "active") == "active"
+                and _shifts_overlap(
+                    _parse_datetime(s["start_time"]),
+                    _parse_datetime(s["end_time"]),
+                    shift_start,
+                    shift_end,
+                )
                 for s in all_shifts
             )
-            if has_shift_on_day:
+            if has_overlapping_shift:
+                skipped_reasons[member_name] = "has overlapping shift"
                 continue
 
             # Gather member's shift history for fatigue scoring
@@ -533,6 +566,18 @@ class UnavailabilityRecommendationService:
 
         # Sort by ranking_score ascending (lower = better)
         candidates.sort(key=lambda c: (c.ranking_score, c.member_name))
+
+        if skipped_reasons:
+            _logger.info(
+                "Skipped %d candidates for %s: %s",
+                len(skipped_reasons), shift_date_str,
+                "; ".join(f"{name}: {reason}" for name, reason in skipped_reasons.items()),
+            )
+        _logger.info(
+            "Returning %d candidates (of %d eligible) for %s",
+            min(top_n, len(candidates)), len(candidates), shift_date_str,
+        )
+
         return candidates[:top_n]
 
     def _compute_cascade_cost(
@@ -708,3 +753,10 @@ def _hours_worked_last_week(
             continue
         total += (item["end_utc"] - item["start_utc"]).total_seconds() / 3600.0
     return round(total, 2)
+
+
+def _shifts_overlap(
+    a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime
+) -> bool:
+    """Return True if two time ranges overlap."""
+    return a_start < b_end and b_start < a_end
