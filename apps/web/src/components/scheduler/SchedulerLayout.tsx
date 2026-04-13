@@ -13,6 +13,7 @@ import { CalendarGrid } from "./CalendarGrid";
 import { MonthlyCalendarGrid } from "./MonthlyCalendarGrid";
 import { GlobalTimeBar } from "./GlobalTimeBar";
 import { ShiftFormModal, ShiftFormData } from "./ShiftFormModal";
+import { UnavailabilityWizard } from "./UnavailabilityWizard";
 import {
   useTeamMembers,
   useShifts,
@@ -192,6 +193,20 @@ export function SchedulerLayout() {
 
   const handleProcessNotes = useCallback((_notes: string) => {}, []);
 
+  // Unavailability wizard state
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardPrefill, setWizardPrefill] = useState<
+    { memberId: string; startDate: string; endDate: string } | undefined
+  >();
+
+  const handleCreateUnavailabilityPlan = useCallback(
+    (memberId: string, startDate: string, endDate: string) => {
+      setWizardPrefill({ memberId, startDate, endDate });
+      setWizardOpen(true);
+    },
+    [],
+  );
+
   const handleShiftMove = useCallback(
     (shiftId: string, newStart: Date, newEnd: Date): boolean => {
       const currentShifts = localShifts ?? dbShifts;
@@ -334,6 +349,7 @@ export function SchedulerLayout() {
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
           onProcessNotes={handleProcessNotes}
+          onCreateUnavailabilityPlan={handleCreateUnavailabilityPlan}
           fatigueAlerts={redistribute.fatigueAlerts}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -400,6 +416,15 @@ export function SchedulerLayout() {
         onSave={handleShiftSave}
         onDelete={handleShiftDelete}
       />
+
+      {activeTeamProfile && (
+        <UnavailabilityWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          teamProfileId={activeTeamProfile.id}
+          prefill={wizardPrefill}
+        />
+      )}
     </div>
   );
 }

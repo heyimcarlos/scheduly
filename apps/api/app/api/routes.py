@@ -12,6 +12,7 @@ from app.models.schemas import (
     AbsenceImpactRequest,
     AbsenceImpactResponse,
     AvailabilityPlanResponse,
+    DayApproveRequest,
     DemandPlanResponse,
     EmergencyRecommendationRequest,
     EmergencyRecommendationResponse,
@@ -24,6 +25,8 @@ from app.models.schemas import (
     SchedulePlanResponse,
     ScheduleRequest,
     SystemConfig,
+    UnavailabilityPlanCreate,
+    UnavailabilityPlanResponse,
 )
 from app.services.fatigue_scoring import FatigueScoringService
 from app.services.job_store import JobStore, get_job_store
@@ -97,6 +100,60 @@ async def absence_impact(
     """Analyze whether a multi-day absence creates critical coverage shortages."""
     service = OptimizerService.from_settings(settings)
     return service.build_absence_impact(request)
+
+
+@router.post("/unavailability/plan", response_model=UnavailabilityPlanResponse)
+async def create_unavailability_plan(
+    request: UnavailabilityPlanCreate,
+    settings: Settings = Depends(get_settings),
+) -> UnavailabilityPlanResponse:
+    """Create an unavailability plan with replacement recommendations."""
+    from app.services.unavailability import UnavailabilityRecommendationService
+    from app.integrations.supabase import get_supabase_client
+
+    client = get_supabase_client()
+    config = OptimizerService.from_settings(settings).load_config()
+    service = UnavailabilityRecommendationService(client=client, system_config=config)
+    return service.create_plan(request)
+
+
+@router.get("/unavailability/plan/{plan_id}", response_model=UnavailabilityPlanResponse)
+async def get_unavailability_plan(plan_id: str) -> UnavailabilityPlanResponse:
+    """Retrieve an existing unavailability plan."""
+    from app.services.unavailability import UnavailabilityRecommendationService
+    from app.integrations.supabase import get_supabase_client
+
+    client = get_supabase_client()
+    service = UnavailabilityRecommendationService(client=client, system_config={})
+    return service.get_plan(plan_id)
+
+
+@router.post("/unavailability/plan/{plan_id}/day/{day_id}/approve", response_model=UnavailabilityPlanResponse)
+async def approve_unavailability_day(
+    plan_id: str, day_id: str, request: DayApproveRequest,
+    settings: Settings = Depends(get_settings),
+) -> UnavailabilityPlanResponse:
+    """Approve a day — assign the chosen replacement."""
+    from app.services.unavailability import UnavailabilityRecommendationService
+    from app.integrations.supabase import get_supabase_client
+
+    client = get_supabase_client()
+    config = OptimizerService.from_settings(settings).load_config()
+    service = UnavailabilityRecommendationService(client=client, system_config=config)
+    return service.approve_day(plan_id, day_id, request.approved_member_id)
+
+
+@router.post("/unavailability/plan/{plan_id}/day/{day_id}/skip", response_model=UnavailabilityPlanResponse)
+async def skip_unavailability_day(
+    plan_id: str, day_id: str,
+) -> UnavailabilityPlanResponse:
+    """Skip a day — no replacement needed."""
+    from app.services.unavailability import UnavailabilityRecommendationService
+    from app.integrations.supabase import get_supabase_client
+
+    client = get_supabase_client()
+    service = UnavailabilityRecommendationService(client=client, system_config={})
+    return service.skip_day(plan_id, day_id)
 
 
 @router.post("/validation/plan", response_model=PlanningValidationResponse)

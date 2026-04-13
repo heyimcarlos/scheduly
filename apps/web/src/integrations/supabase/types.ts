@@ -139,6 +139,7 @@ export type Database = {
           member_id: string
           shift_type: string
           start_time: string
+          status: string
           team_profile_id: string
           title: string | null
           updated_at: string
@@ -155,6 +156,7 @@ export type Database = {
           member_id: string
           shift_type?: string
           start_time: string
+          status?: string
           team_profile_id: string
           title?: string | null
           updated_at?: string
@@ -171,6 +173,7 @@ export type Database = {
           member_id?: string
           shift_type?: string
           start_time?: string
+          status?: string
           team_profile_id?: string
           title?: string | null
           updated_at?: string
@@ -439,6 +442,128 @@ export type Database = {
             columns: ["team_member_id"]
             isOneToOne: false
             referencedRelation: "team_members_safe"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unavailability_plans: {
+        Row: {
+          id: string
+          team_profile_id: string
+          absent_member_id: string
+          start_date: string
+          end_date: string
+          status: string
+          cascade_depth_limit: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          team_profile_id: string
+          absent_member_id: string
+          start_date: string
+          end_date: string
+          status?: string
+          cascade_depth_limit?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          team_profile_id?: string
+          absent_member_id?: string
+          start_date?: string
+          end_date?: string
+          status?: string
+          cascade_depth_limit?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unavailability_plans_team_profile_id_fkey"
+            columns: ["team_profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unavailability_plans_absent_member_id_fkey"
+            columns: ["absent_member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unavailability_days: {
+        Row: {
+          id: string
+          plan_id: string
+          date: string
+          original_shift_id: string | null
+          coverage_shift_id: string | null
+          approved_member_id: string | null
+          status: string
+          cascade_depth: number
+          recommendations: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          plan_id: string
+          date: string
+          original_shift_id?: string | null
+          coverage_shift_id?: string | null
+          approved_member_id?: string | null
+          status?: string
+          cascade_depth?: number
+          recommendations?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          plan_id?: string
+          date?: string
+          original_shift_id?: string | null
+          coverage_shift_id?: string | null
+          approved_member_id?: string | null
+          status?: string
+          cascade_depth?: number
+          recommendations?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unavailability_days_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "unavailability_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unavailability_days_original_shift_id_fkey"
+            columns: ["original_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unavailability_days_coverage_shift_id_fkey"
+            columns: ["coverage_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unavailability_days_approved_member_id_fkey"
+            columns: ["approved_member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
             referencedColumns: ["id"]
           },
         ]
