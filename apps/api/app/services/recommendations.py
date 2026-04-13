@@ -95,7 +95,7 @@ class FatigueAwareRecommendationService:
                 continue
 
             candidate_history = recent_by_employee.get(window.employee_id, [])
-            if self._has_same_day_assignment(candidate_history, target_window):
+            if self._has_overlapping_assignment(candidate_history, target_window):
                 continue
 
             overtime_hours = self._compute_shift_overtime(target_window, window)
@@ -267,17 +267,18 @@ class FatigueAwareRecommendationService:
         return round(rest_hours, 2)
 
     @staticmethod
-    def _has_same_day_assignment(
+    def _has_overlapping_assignment(
         candidate_history: list[dict[str, Any]], target_window: AvailabilityWindow
     ) -> bool:
-        day_start = datetime.combine(
-            target_window.utc_start.date(),
-            datetime.min.time(),
-            tzinfo=timezone.utc,
-        )
-        day_end = day_start + timedelta(days=1)
+        """Check if candidate has a shift that overlaps in time with the target shift.
+
+        Only excludes candidates whose existing shifts actually conflict with the
+        absent shift's time range. A member on Evening1 (17-01) is a valid candidate
+        for Morning1 (09-17) since the shifts don't overlap.
+        """
         return any(
-            item["start_utc"] < day_end and item["end_utc"] > day_start
+            item["start_utc"] < target_window.utc_end
+            and item["end_utc"] > target_window.utc_start
             for item in candidate_history
         )
 
