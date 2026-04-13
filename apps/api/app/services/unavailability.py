@@ -73,12 +73,14 @@ class UnavailabilityRecommendationService:
         context_start = (request.start_date - timedelta(days=7)).isoformat()
         context_end = (request.end_date + timedelta(days=7)).isoformat()
 
-        # Get absent member's shifts in the date range (scoped to this team profile)
+        # Get absent member's shifts in the date range.
+        # Note: filter by member_id only (not team_profile_id) because shifts may
+        # have been generated under a different profile ID than the one the member
+        # currently belongs to.
         absent_shifts = (
             self.client.table("shifts")
             .select("*")
             .eq("member_id", request.absent_member_id)
-            .eq("team_profile_id", team_profile_id)
             .eq("status", "active")
             .gte("start_time", f"{start_iso}T00:00:00Z")
             .lte("start_time", f"{end_iso}T23:59:59Z")
@@ -93,13 +95,14 @@ class UnavailabilityRecommendationService:
             .execute()
         )
 
-        # Get all shifts for the team in the wider context window
+        # Get all shifts for the team in the wider context window.
+        # Filter by member_ids (already scoped to the team profile) rather than
+        # shifts.team_profile_id, since shifts may carry a stale profile reference.
         member_ids = [m["id"] for m in team_members.data]
         all_shifts = (
             self.client.table("shifts")
             .select("*")
             .in_("member_id", member_ids)
-            .eq("team_profile_id", team_profile_id)
             .eq("status", "active")
             .gte("start_time", f"{context_start}T00:00:00Z")
             .lte("start_time", f"{context_end}T23:59:59Z")
