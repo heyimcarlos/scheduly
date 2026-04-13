@@ -104,7 +104,7 @@ class UnavailabilityRecommendationService:
             .execute()
         )
         profile_config = team_profile.data.get("config", {}) if team_profile.data else {}
-        slot_policies = profile_config.get("slot_policies", {})
+        slot_minimums = self._build_slot_minimums(profile_config)
 
         # 3. For each day in the range, detect gaps and rank candidates
         current = request.start_date
@@ -128,7 +128,7 @@ class UnavailabilityRecommendationService:
 
             # Check if removing this shift creates a coverage gap
             is_gap = self._is_coverage_gap_from_shift(
-                absent_shift, all_shifts.data, slot_policies
+                absent_shift, all_shifts.data, slot_minimums
             )
 
             if not is_gap:
@@ -356,11 +356,35 @@ class UnavailabilityRecommendationService:
                 .execute()
             )
 
+    @staticmethod
+    def _build_slot_minimums(profile_config: dict[str, Any]) -> dict[str, int]:
+        """Build a map of slot_name → minimum headcount from both slot_policies and workload_template."""
+        minimums: dict[str, int] = {}
+
+        # Source 1: slot_policies (raw config from DB)
+        slot_policies = profile_config.get("slot_policies", {})
+        for slot_name, policy in slot_policies.items():
+            min_hc = int(policy.get("min_headcount", 0) or 0)
+            if min_hc > 0:
+                minimums[slot_name] = max(minimums.get(slot_name, 0), min_hc)
+
+        # Source 2: workload_template (if present — has minimum_headcount per slot)
+        workload_template = profile_config.get("workload_template", [])
+        for row in workload_template:
+            slot_name = row.get("slot_name")
+            if not slot_name:
+                continue
+            min_hc = int(row.get("minimum_headcount", 0) or 0)
+            if min_hc > 0:
+                minimums[slot_name] = max(minimums.get(slot_name, 0), min_hc)
+
+        return minimums
+
     def _is_coverage_gap_from_shift(
         self,
         target_shift: dict[str, Any],
         all_shifts: list[dict[str, Any]],
-        slot_policies: dict[str, Any],
+        slot_minimums: dict[str, int],
     ) -> bool:
         """Check if removing target_shift drops coverage below minimum headcount."""
         shift_date = target_shift["start_time"][:10]
@@ -380,10 +404,16 @@ class UnavailabilityRecommendationService:
             )
         )
 
-        # Get minimum headcount from slot policies
+        # Look up minimum from pre-built map
         minimum = 0
-        if slot_name and slot_name in slot_policies:
-            minimum = slot_policies[slot_name].get("min_headcount", 0)
+        if slot_name and slot_name in slot_minimums:
+            minimum = slot_minimums[slot_name]
+
+        # Fallback: if no explicit minimum is configured but this shift exists,
+        # assume the scheduler placed it for a reason — treat as gap if no one
+        # else covers the same slot on this day
+        if minimum == 0:
+            minimum = 1
 
         return remaining < minimum
 
@@ -560,7 +590,7 @@ class UnavailabilityRecommendationService:
             .execute()
         )
         profile_config = team_profile.data.get("config", {}) if team_profile.data else {}
-        slot_policies = profile_config.get("slot_policies", {})
+        slot_minimums = self._build_slot_minimums(profile_config)
 
         # Get all team members
         team_members = (
@@ -602,7 +632,7 @@ class UnavailabilityRecommendationService:
                 continue
 
             # Check if removing this employee creates a gap
-            if self._is_coverage_gap_from_shift(shift, all_shifts.data, slot_policies):
+            if self._is_coverage_gap_from_shift(shift, all_shifts.data, slot_minimums):
                 new_depth = current_depth + 1
                 if new_depth <= depth_limit:
                     # Create cascade day with recommendations
