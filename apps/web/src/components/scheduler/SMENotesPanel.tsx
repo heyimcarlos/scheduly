@@ -44,7 +44,7 @@ export function SMENotesPanel({
             return;
           }
 
-          if (onConfirmParsedEvents && teamMembers.length > 0) {
+          if (onConfirmParsedEvents) {
             // Show review UI
             setParsedEvents(response.events);
           } else {

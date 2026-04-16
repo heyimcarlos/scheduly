@@ -120,6 +120,13 @@ export function ParsedEventsReview({
         </Badge>
       </div>
 
+      {teamMembers.length === 0 && (
+        <div className="flex items-center gap-1.5 rounded-md border border-yellow-600/30 bg-yellow-600/10 px-2.5 py-1.5 text-xs text-yellow-600 dark:text-yellow-400">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          No team roster loaded — employee names cannot be resolved.
+        </div>
+      )}
+
       <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
         {events.map((event, idx) => {
           const isSkipped = skippedIndices.has(idx);
