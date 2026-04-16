@@ -163,6 +163,13 @@ class ScheduleInput:
     # Fatigue-aware scheduling parameters
     fatigue_weight: float = 0.0  # Weight of fatigue penalty in objective (0 = disabled)
     fatigue_threshold: float = 0.6  # Employees above this fatigue are deprioritized for extra shifts
+    # Per-weekday weight (0–5) influencing shift distribution.
+    # Higher weight = solver prefers assigning shifts on that day.
+    # Keys: "monday".."sunday", values: 0–5. Default covers Mon–Fri=3, Sat–Sun=1.
+    day_weights: Dict[str, int] = field(default_factory=lambda: {
+        "monday": 3, "tuesday": 3, "wednesday": 3,
+        "thursday": 3, "friday": 3, "saturday": 1, "sunday": 1,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -978,6 +985,43 @@ def _consecutive_off_rewards(
     return rewards
 
 
+def _day_weight_penalties(
+    is_working: Dict,
+    employees: List[EmployeeInput],
+    num_days: int,
+    start_date: date,
+    day_weights: Dict[str, int],
+    multiplier: int = 20,
+) -> List[cp_model.LinearExpr]:
+    """Add penalty for each employee working on low-weight days.
+
+    Higher day_weight → lower penalty. Weight=5 (max) → penalty=0.
+    Weight=0 (min) → penalty = multiplier * 5 (max penalty).
+    Penalty is added per employee per day they are assigned any shift.
+    """
+    if not day_weights:
+        return []
+
+    # weekday() -> day name
+    _DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    penalties: List[cp_model.LinearExpr] = []
+
+    for d in range(num_days):
+        current_date = _date_for_offset(start_date, d)
+        day_name = _DAY_NAMES[current_date.weekday()]
+        weight = int(day_weights.get(day_name, 3))
+        # Penalty: (max_weight - weight) scaled. max_weight = 5, multiplier gives CP-SAT integer scale.
+        penalty_per_working = (5 - weight) * multiplier
+        if penalty_per_working == 0:
+            continue
+
+        for e_idx in range(len(employees)):
+            if is_working[(e_idx, d)]:
+                penalties.append(penalty_per_working)
+
+    return penalties
+
+
 def _fatigue_penalties(
     model: cp_model.CpModel,
     shifts: Dict,
@@ -1252,10 +1296,18 @@ def _run_pass1(
         fatigue_weight=inp.fatigue_weight,
         fatigue_threshold=inp.fatigue_threshold,
     )
+    day_weight_pt = _day_weight_penalties(
+        is_working,
+        inp.employees,
+        inp.num_days,
+        inp.start_date,
+        inp.day_weights,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
         + fatigue_pt
+        + day_weight_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(
@@ -1483,10 +1535,18 @@ def _run_pass2(
         fatigue_weight=inp.fatigue_weight,
         fatigue_threshold=inp.fatigue_threshold,
     )
+    day_weight_pt = _day_weight_penalties(
+        is_working,
+        inp.employees,
+        inp.num_days,
+        inp.start_date,
+        inp.day_weights,
+    )
     penalties = (
         demand_penalties
         + workload_penalties
         + fatigue_pt
+        + day_weight_pt
         + _fairness_penalties(model, is_working, n_emp, inp.num_days)
         + _consecutive_work_penalties(model, is_working, n_emp, inp.num_days)
         + _assignment_region_penalties(shifts, inp.employees, all_slots, inp.num_days)

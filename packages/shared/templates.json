@@ -17,13 +17,17 @@
           "patch_penalty": 90,
           "canonical": true,
           "max_headcount": 1,
-          "min_headcount": 1
+          "min_headcount": 1,
+          "utc_start": "09:00",
+          "utc_end": "17:00"
         },
         "Morning1": {
           "coverage_label": "Canada Day Early",
           "coverage_role": "canada_day",
           "allowed_regions": ["Canada"],
-          "preferred_regions": ["Canada"]
+          "preferred_regions": ["Canada"],
+          "utc_start": "12:00",
+          "utc_end": "20:00"
         },
         "Morning2": {
           "coverage_label": "Canada Day Core",
@@ -32,19 +36,25 @@
           "preferred_regions": ["Canada"],
           "fallback_penalty": 200,
           "canonical": true,
-          "min_headcount": 1
+          "min_headcount": 1,
+          "utc_start": "13:00",
+          "utc_end": "21:00"
         },
         "Morning3": {
           "coverage_label": "Canada Day Late",
           "coverage_role": "canada_day",
           "allowed_regions": ["Canada"],
-          "preferred_regions": ["Canada"]
+          "preferred_regions": ["Canada"],
+          "utc_start": "15:00",
+          "utc_end": "23:00"
         },
         "Evening1": {
           "coverage_label": "Canada Evening Early",
           "coverage_role": "canada_evening",
           "allowed_regions": ["Canada"],
-          "preferred_regions": ["Canada"]
+          "preferred_regions": ["Canada"],
+          "utc_start": "18:00",
+          "utc_end": "02:00"
         },
         "Evening2": {
           "coverage_label": "Canada Evening Core",
@@ -52,7 +62,9 @@
           "allowed_regions": ["Canada"],
           "preferred_regions": ["Canada"],
           "canonical": true,
-          "min_headcount": 1
+          "min_headcount": 1,
+          "utc_start": "21:00",
+          "utc_end": "05:00"
         },
         "Night1": {
           "coverage_label": "Overnight Exception",
@@ -63,7 +75,9 @@
           "fallback_penalty": 40,
           "patch_penalty": 110,
           "canonical": true,
-          "min_headcount": 1
+          "min_headcount": 1,
+          "utc_start": "05:00",
+          "utc_end": "13:00"
         }
       },
       "rules": {

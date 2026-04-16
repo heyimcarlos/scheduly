@@ -49,6 +49,7 @@ export interface TeamProfileConfig {
     min_weekly_hours_required: number;
     overtime_threshold_hours: number;
     enforce_senior_per_shift: boolean;
+    day_weights?: Record<string, number>;
   };
   slot_policies: Record<string, SlotPolicy>;
   answers: {
@@ -56,6 +57,7 @@ export interface TeamProfileConfig {
   };
   demand_overrides?: DemandOverrides;
   workload_template?: WorkloadTemplatePoint[];
+  day_weights?: Record<string, number>;
 }
 
 export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
@@ -70,12 +72,16 @@ export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
     canonical: true,
     max_headcount: 1,
     min_headcount: 1,
+    utc_start: "09:00",
+    utc_end: "17:00",
   },
   Morning1: {
     coverage_label: "Canada Day Early",
     coverage_role: "canada_day",
     allowed_regions: ["Canada"],
     preferred_regions: ["Canada"],
+    utc_start: "12:00",
+    utc_end: "20:00",
   },
   Morning2: {
     coverage_label: "Canada Day Core",
@@ -85,18 +91,24 @@ export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
     fallback_penalty: 200,
     canonical: true,
     min_headcount: 1,
+    utc_start: "13:00",
+    utc_end: "21:00",
   },
   Morning3: {
     coverage_label: "Canada Day Late",
     coverage_role: "canada_day",
     allowed_regions: ["Canada"],
     preferred_regions: ["Canada"],
+    utc_start: "15:00",
+    utc_end: "23:00",
   },
   Evening1: {
     coverage_label: "Canada Evening Early",
     coverage_role: "canada_evening",
     allowed_regions: ["Canada"],
     preferred_regions: ["Canada"],
+    utc_start: "18:00",
+    utc_end: "02:00",
   },
   Evening2: {
     coverage_label: "Canada Evening Core",
@@ -105,6 +117,8 @@ export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
     preferred_regions: ["Canada"],
     canonical: true,
     min_headcount: 1,
+    utc_start: "21:00",
+    utc_end: "05:00",
   },
   Night1: {
     coverage_label: "Overnight Exception",
@@ -116,6 +130,8 @@ export const DEFAULT_SLOT_POLICIES: Record<string, SlotPolicy> = {
     patch_penalty: 110,
     canonical: true,
     min_headcount: 1,
+    utc_start: "05:00",
+    utc_end: "13:00",
   },
 };
 
@@ -133,6 +149,16 @@ export const DEFAULT_RULES: TeamProfileConfig["rules"] = {
   min_weekly_hours_required: 40,
   overtime_threshold_hours: 40,
   enforce_senior_per_shift: true,
+};
+
+export const DEFAULT_DAY_WEIGHTS: Record<string, number> = {
+  monday: 3,
+  tuesday: 3,
+  wednesday: 3,
+  thursday: 3,
+  friday: 3,
+  saturday: 1,
+  sunday: 1,
 };
 
 export function buildDefaultWorkloadTemplate(

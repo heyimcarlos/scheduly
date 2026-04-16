@@ -429,6 +429,12 @@ class OptimizerService:
                 fatigue_threshold=(
                     inline_rules.fatigue_threshold if inline_rules and hasattr(inline_rules, 'fatigue_threshold') else 0.6
                 ),
+                day_weights=(
+                    dict(inline_rules.day_weights) if inline_rules and hasattr(inline_rules, 'day_weights') else {
+                        "monday": 3, "tuesday": 3, "wednesday": 3,
+                        "thursday": 3, "friday": 3, "saturday": 1, "sunday": 1,
+                    }
+                ),
             )
             schedule_json = solve_scheduling(schedule_input)
             if schedule_json:
