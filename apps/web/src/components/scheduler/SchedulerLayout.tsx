@@ -27,6 +27,7 @@ import { useApprovedTimeOff } from "@/hooks/useApprovedTimeOff";
 import { useCoverageViolations } from "@/hooks/useCoverageViolations";
 import { useRedistribute } from "@/hooks/useRedistribute";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
+import type { AbsenceEventWindow } from "@/lib/api";
 import { addDays, addWeeks, format, parseISO, subWeeks, addMonths, subMonths } from "date-fns";
 import { zonedLocalTimeToUtc } from "@/lib/timezone";
 import { toast } from "sonner";
@@ -62,6 +63,9 @@ export function SchedulerLayout() {
   const deleteSuggestion = useDeleteSuggestion();
   const deleteShift = useDeleteShift();
   const createShift = useCreateShift();
+
+  // Parsed note absence events queued for the next optimization run
+  const [parsedAbsenceEvents, setParsedAbsenceEvents] = useState<AbsenceEventWindow[]>([]);
 
   // Local shift overrides for optimistic UI
   const [localShifts, setLocalShifts] = useState<Shift[] | null>(null);
@@ -144,15 +148,23 @@ export function SchedulerLayout() {
         employees,
         team_profile_id: activeTeamProfile?.template_key ?? activeTeamProfileConfig.template_key,
         team_profile_config: activeTeamProfileConfig,
+        ...(parsedAbsenceEvents.length > 0 && { absence_events: parsedAbsenceEvents }),
       },
       { memberIdsByEmployeeId },
     );
 
-    toast.info("AI redistribution started", { description: "Generating 30-day schedule…" });
+    const absCount = parsedAbsenceEvents.length;
+    setParsedAbsenceEvents([]);
+    toast.info("AI redistribution started", {
+      description: absCount > 0
+        ? `Generating 30-day schedule with ${absCount} absence event${absCount !== 1 ? "s" : ""} from parsed notes…`
+        : "Generating 30-day schedule…",
+    });
   }, [
     activeTeamProfile?.template_key,
     activeTeamProfileConfig,
     loadingTeamProfile,
+    parsedAbsenceEvents,
     redistribute,
     teamMembers,
   ]);
@@ -190,7 +202,12 @@ export function SchedulerLayout() {
     [dbShifts, deleteSuggestion],
   );
 
-  const handleProcessNotes = useCallback((_notes: string) => {}, []);
+  const handleConfirmParsedEvents = useCallback(
+    (absenceEvents: AbsenceEventWindow[]) => {
+      setParsedAbsenceEvents(absenceEvents);
+    },
+    [],
+  );
 
   const handleShiftMove = useCallback(
     (shiftId: string, newStart: Date, newEnd: Date): boolean => {
@@ -333,7 +350,7 @@ export function SchedulerLayout() {
           suggestions={suggestions}
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
-          onProcessNotes={handleProcessNotes}
+          onConfirmParsedEvents={handleConfirmParsedEvents}
           fatigueAlerts={redistribute.fatigueAlerts}
         />
         <div className="flex-1 flex flex-col overflow-hidden">

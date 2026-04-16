@@ -8,14 +8,14 @@ import { Separator } from '@/components/ui/separator';
 import { Brain, Users, Lightbulb, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FatigueAlertsPanel } from './FatigueAlertsPanel';
-import type { FatigueAlert } from '@/lib/api';
+import type { AbsenceEventWindow, FatigueAlert } from '@/lib/api';
 
 interface SchedulerSidebarProps {
   teamMembers: TeamMember[];
   suggestions: AISuggestion[];
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
-  onProcessNotes: (notes: string) => void;
+  onConfirmParsedEvents: (absenceEvents: AbsenceEventWindow[]) => void;
   fatigueAlerts?: FatigueAlert[];
 }
 
@@ -24,7 +24,7 @@ export function SchedulerSidebar({
   suggestions,
   onAcceptSuggestion,
   onRejectSuggestion,
-  onProcessNotes,
+  onConfirmParsedEvents,
   fatigueAlerts = [],
 }: SchedulerSidebarProps) {
   const [expandedSections, setExpandedSections] = useState({
@@ -72,7 +72,10 @@ export function SchedulerSidebar({
               )}
             </button>
             {expandedSections.notes && (
-              <SMENotesPanel onProcessNotes={onProcessNotes} />
+              <SMENotesPanel
+                teamMembers={teamMembers}
+                onConfirmParsedEvents={onConfirmParsedEvents}
+              />
             )}
           </div>
 
