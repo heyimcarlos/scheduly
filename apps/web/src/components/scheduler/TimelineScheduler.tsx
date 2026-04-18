@@ -31,7 +31,7 @@ import {
 import { useEmergencyRecommendations } from "@/hooks/useEmergencyRecommendations";
 import { useAbsenceImpact } from "@/hooks/useAbsenceImpact";
 import { ReplacementRecommendation } from "@/lib/api";
-import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift } from "@/types/scheduler";
+import { CoverageRules, DEFAULT_COVERAGE_RULES, Shift, Timezone } from "@/types/scheduler";
 import { useRedistribute, type FatigueScoresMap } from "@/hooks/useRedistribute";
 import { useFatigueScores } from "@/hooks/useFatigueScores";
 import { useTeamProfileSchedulerSettings } from "@/hooks/useTeamProfileSchedulerSettings";
@@ -163,7 +163,6 @@ export function TimelineScheduler() {
   // Combined fatigue scores: AI redistribution scores override manual scores
   const [fatigueScoresMap, setFatigueScoresMap] = useState<FatigueScoresMap>({});
   const [wizardOpen, setWizardOpen] = useState(false);
-  const { data: inProgressPlanId } = useInProgressPlan(activeTeamProfile?.id ?? null);
   const {
     activeTeamProfile,
     activeTeamProfileConfig,
@@ -174,6 +173,7 @@ export function TimelineScheduler() {
     saveDemandOverrides,
     saveWorkloadTemplate,
   } = useTeamProfileSchedulerSettings();
+  const { data: inProgressPlanId } = useInProgressPlan(activeTeamProfile?.id ?? null);
 
   const isLoading = loadingMembers || loadingShifts;
   const minHoursTarget = proratedHoursForVisibleRange(
@@ -745,9 +745,8 @@ export function TimelineScheduler() {
                   <div
                     key={day.toISOString()}
                     onClick={() => handleDayClick(day)}
-                    className={`flex items-center justify-center text-xs font-medium border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
-                      isToday(day) ? "bg-primary/10 text-primary" : "text-muted-foreground"
-                    } cursor-pointer hover:bg-muted/50 transition-colors`}
+                    className={`flex items-center justify-center text-xs font-medium border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${isToday(day) ? "bg-primary/10 text-primary" : "text-muted-foreground"
+                      } cursor-pointer hover:bg-muted/50 transition-colors`}
                   >
                     {format(day, dateFormat)}
                   </div>
@@ -769,9 +768,8 @@ export function TimelineScheduler() {
                       <div
                         key={day.toISOString()}
                         onClick={() => handleDayClick(day)}
-                        className={`flex items-center justify-center min-w-0 overflow-hidden ${isCompact ? "px-0" : "px-1"} border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${
-                          isToday(day) ? "bg-primary/5" : ""
-                        }`}
+                        className={`flex items-center justify-center min-w-0 overflow-hidden ${isCompact ? "px-0" : "px-1"} border-r border-border last:border-r-0 ${weekBorderClass(day, i)} ${isToday(day) ? "bg-primary/5" : ""
+                          }`}
                       >
                         {dayShifts.length > 0 && (
                           <div className="flex flex-col gap-0.5 w-full min-w-0 overflow-hidden px-0.5">
@@ -825,9 +823,8 @@ export function TimelineScheduler() {
                 {coverage.map((count, i) => (
                   <div
                     key={i}
-                    className={`flex items-center justify-center border-r border-border last:border-r-0 ${weekBorderClass(days[i], i)} ${
-                      isToday(days[i]) ? "bg-primary/5" : ""
-                    }`}
+                    className={`flex items-center justify-center border-r border-border last:border-r-0 ${weekBorderClass(days[i], i)} ${isToday(days[i]) ? "bg-primary/5" : ""
+                      }`}
                   >
                     <span className="text-xs text-muted-foreground">{count}</span>
                   </div>
